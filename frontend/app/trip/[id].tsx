@@ -1,0 +1,173 @@
+import Feather from "@react-native-vector-icons/feather";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Image } from "expo-image";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useState } from "react";
+import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { api, formatDate, formatDuration, getDeviceId, Quote, usd } from "@/src/api";
+import { RouteMap } from "@/src/components/RouteMap";
+import { StatusPill } from "@/src/components/StatusPill";
+import { JET_IMAGES } from "@/src/jets";
+import { useAirports } from "@/src/queries";
+import { fonts, makeStyles, useTheme } from "@/src/theme";
+
+export default function TripDetail() {
+  const styles = useStyles();
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const qc = useQueryClient();
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const { data: airports } = useAirports();
+  const [confirm, setConfirm] = useState(false);
+
+  const { data: q, isLoading, isError } = useQuery({
+    queryKey: ["quote", id],
+    queryFn: async () => api<Quote>(`/quotes/${id}?device_id=${await getDeviceId()}`),
+  });
+
+  const cancel = useMutation({
+    mutationFn: async () => api<Quote>(`/quotes/${id}/cancel?device_id=${await getDeviceId()}`, { method: "POST" }),
+    onSuccess: (data) => {
+      qc.setQueryData(["quote", id], data);
+      qc.invalidateQueries({ queryKey: ["quotes"] });
+      setConfirm(false);
+    },
+  });
+
+  const from = airports?.find((a) => a.code === q?.from_code);
+  const to = airports?.find((a) => a.code === q?.to_code);
+
+  return (
+    <View style={styles.root} testID="trip-detail-screen">
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+        <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/trips"))} style={styles.iconBtn} testID="trip-detail-back-button">
+          <Feather name="arrow-left" size={22} color={colors.onSurface} />
+        </Pressable>
+        <Text style={styles.headerTitle}>TRIP</Text>
+        <View style={styles.iconBtn} />
+      </View>
+
+      {isLoading ? (
+        <View style={styles.center}><ActivityIndicator color={colors.onSurface} /></View>
+      ) : isError || !q ? (
+        <View style={styles.center}><Text style={styles.muted}>Trip not found.</Text></View>
+      ) : (
+        <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}>
+          <View style={styles.top}>
+            <StatusPill status={q.status} />
+            <View style={styles.codes}>
+              <View>
+                <Text style={styles.code} testID="trip-detail-from">{q.from_code}</Text>
+                <Text style={styles.city}>{from?.city}</Text>
+              </View>
+              <View style={{ alignItems: "flex-end" }}>
+                <Text style={styles.code} testID="trip-detail-to">{q.to_code}</Text>
+                <Text style={styles.city}>{to?.city}</Text>
+              </View>
+            </View>
+          </View>
+          <RouteMap from={from} to={to} height={200} testID="trip-route-map" />
+
+          <View style={styles.grid}>
+            <Cell label="Departure" value={`${formatDate(q.depart_date)} · ${q.depart_window}`} />
+            <Cell label="Return" value={q.trip_type === "return" && q.return_date ? formatDate(q.return_date) : "One way"} />
+            <Cell label="Distance" value={`${q.distance_nm.toLocaleString("en-US")} nm`} />
+            <Cell label="Flight time" value={`${formatDuration(q.flight_minutes)}${q.fuel_stops ? ` · ${q.fuel_stops} stop` : ""}`} />
+            <Cell label="Guests" value={`${q.pax}`} />
+            <Cell label="Estimate" value={usd(q.estimated_price_usd)} testID="trip-detail-price" />
+          </View>
+
+          <View style={styles.jet}>
+            <Image source={JET_IMAGES[q.jet_id]} style={styles.jetImg} contentFit="contain" />
+            <Text style={styles.jetName}>{q.jet_name}</Text>
+          </View>
+
+          {q.notes ? (
+            <View style={styles.block}>
+              <Text style={styles.label}>Requests</Text>
+              <Text style={styles.body}>{q.notes}</Text>
+            </View>
+          ) : null}
+
+          <View style={styles.block}>
+            <Text style={styles.body}>
+              {q.status === "Cancelled"
+                ? "This request has been cancelled."
+                : `Our flight team will confirm availability and send your final quote to ${q.email}.`}
+            </Text>
+          </View>
+
+          <View style={styles.actions}>
+            <Pressable style={styles.primary} onPress={() => router.navigate("/concierge")} testID="trip-ask-concierge-button">
+              <Feather name="message-circle" size={16} color={colors.onBrandPrimary} />
+              <Text style={styles.primaryText}>Ask the concierge</Text>
+            </Pressable>
+            {q.status !== "Cancelled" && (
+              <Pressable style={styles.secondary} onPress={() => setConfirm(true)} testID="trip-cancel-button">
+                <Text style={styles.secondaryText}>Cancel request</Text>
+              </Pressable>
+            )}
+          </View>
+        </ScrollView>
+      )}
+
+      <Modal visible={confirm} transparent animationType="fade" onRequestClose={() => setConfirm(false)}>
+        <Pressable style={styles.backdrop} onPress={() => setConfirm(false)}>
+          <Pressable style={[styles.sheet, { paddingBottom: insets.bottom + 24 }]} testID="cancel-confirm-sheet">
+            <Text style={styles.sheetTitle}>Cancel this request?</Text>
+            <Text style={styles.body}>Your quote request will be withdrawn. You can always request a new one.</Text>
+            <Pressable style={[styles.primary, { marginTop: 24 }]} onPress={() => cancel.mutate()} testID="cancel-confirm-button">
+              {cancel.isPending ? <ActivityIndicator color={colors.onBrandPrimary} /> : <Text style={styles.primaryText}>Yes, cancel</Text>}
+            </Pressable>
+            <Pressable style={styles.secondary} onPress={() => setConfirm(false)} testID="cancel-dismiss-button">
+              <Text style={styles.secondaryText}>Keep request</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </View>
+  );
+}
+
+function Cell({ label, value, testID }: { label: string; value: string; testID?: string }) {
+  const styles = useStyles();
+  return (
+    <View style={styles.cell}>
+      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.value} testID={testID}>{value}</Text>
+    </View>
+  );
+}
+
+const useStyles = makeStyles((c) => ({
+  root: { flex: 1, backgroundColor: c.surface },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 8, borderBottomWidth: 0.5, borderBottomColor: c.border, backgroundColor: c.surface },
+  iconBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  headerTitle: { fontFamily: fonts.text, fontSize: 12, letterSpacing: 3, color: c.onSurface },
+  center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  muted: { fontFamily: fonts.text, color: c.muted },
+  top: { paddingHorizontal: 24, paddingTop: 24, alignItems: "flex-start" },
+  codes: { flexDirection: "row", justifyContent: "space-between", alignSelf: "stretch", marginTop: 16 },
+  code: { fontFamily: fonts.text, fontSize: 40, fontWeight: "700", letterSpacing: 1, color: c.onSurface },
+  city: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary },
+  grid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: 24, borderTopWidth: 0.5, borderTopColor: c.border },
+  cell: { width: "50%", paddingVertical: 16, borderBottomWidth: 0.5, borderBottomColor: c.border, paddingRight: 8 },
+  label: { fontFamily: fonts.text, fontSize: 11, color: c.muted, letterSpacing: 0.5, marginBottom: 4 },
+  value: { fontFamily: fonts.text, fontSize: 15, color: c.onSurface, fontVariant: ["tabular-nums"] },
+  jet: { paddingHorizontal: 24, paddingTop: 32, alignItems: "center" },
+  jetImg: { width: "100%", aspectRatio: 16 / 7 },
+  jetName: { fontFamily: fonts.display, fontSize: 22, color: c.onSurface, marginTop: 8 },
+  block: { paddingHorizontal: 24, paddingTop: 24 },
+  body: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary },
+  actions: { paddingHorizontal: 24, paddingTop: 32, gap: 12 },
+  primary: { height: 52, borderRadius: 4, backgroundColor: c.brandPrimary, flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center" },
+  primaryText: { fontFamily: fonts.text, fontSize: 15, color: c.onBrandPrimary },
+  secondary: { height: 52, borderRadius: 4, borderWidth: 1, borderColor: c.border, alignItems: "center", justifyContent: "center", marginTop: 12 },
+  secondaryText: { fontFamily: fonts.text, fontSize: 15, color: c.onSurface },
+  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" },
+  sheet: { backgroundColor: c.surface, padding: 24, borderTopLeftRadius: 8, borderTopRightRadius: 8 },
+  sheetTitle: { fontFamily: fonts.display, fontSize: 24, color: c.onSurface, marginBottom: 8 },
+}));

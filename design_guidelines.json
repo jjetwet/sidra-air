@@ -1,0 +1,159 @@
+{
+  "app_name": "SIDRA",
+  "personality": "3 Editorial Mobile LIGHT",
+  "personality_one_liner": "A slick, modern, minimalist luxury charter experience where content breathes and stark monochrome contrast signals exclusivity.",
+  "color": {
+    "surface": "#FFFFFF",
+    "onSurface": "#111111",
+    "surfaceSecondary": "#F7F7F7",
+    "onSurfaceSecondary": "#333333",
+    "surfaceTertiary": "#EAEAEA",
+    "onSurfaceTertiary": "#111111",
+    "surfaceInverse": "#111111",
+    "onSurfaceInverse": "#FFFFFF",
+    "brand": "#111111",
+    "brandPrimary": "#111111",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#C5A059",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#F9F6F0",
+    "onBrandTertiary": "#C5A059",
+    "success": "#2E4D3A",
+    "onSuccess": "#FFFFFF",
+    "warning": "#8A6D3B",
+    "onWarning": "#FFFFFF",
+    "error": "#6B2A2A",
+    "onError": "#FFFFFF",
+    "info": "#2B4353",
+    "onInfo": "#FFFFFF",
+    "border": "#E5E5E5",
+    "borderStrong": "#111111",
+    "divider": "#F0F0F0",
+    "muted": "#888888",
+    "onBrand": "#FFFFFF"
+  },
+  "typography": {
+    "displayFontFamily": "Playfair Display",
+    "textFontFamily": "DM Sans",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Editorial spacing: generous vertical padding. Let the text and images breathe. Sections should have 48pt spacing between them.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 0,
+    "md": 4,
+    "lg": 8,
+    "pill": 999
+  },
+  "shadow_tier": "0",
+  "navigation": "bottom_tabs",
+  "icon_set": "Feather",
+  "glassmorphism": {
+    "enabled": "true",
+    "do's": [
+      "Bottom tab bar",
+      "Sticky header backgrounds over scrolling content",
+      "Floating action buttons"
+    ],
+    "dont's": [
+      "Cards in dense lists",
+      "Form inputs",
+      "Body content areas"
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Home (Fleet Browsing)",
+      "purpose": "Showcase the Bombardier and Gulfstream fleet with stark, edge-to-edge minimalist luxury.",
+      "states": {
+        "loading": "Centered minimalist spinner with 'Preparing Fleet...'",
+        "empty": "Illustration of a solitary jet. 'No jets available.'",
+        "error": "Failed to load fleet, retry button."
+      },
+      "layout": "Use a vertical scroll of large, edge-to-edge jet images on white backgrounds. Below each jet image, display the name in Playfair Display (24pt) and 4 minimal tabular stats (range, pax, speed, hourly rate) in DM Sans."
+    },
+    {
+      "name": "Charter Quote",
+      "purpose": "Allow members to request a quote with a minimalist flight route visualization.",
+      "states": {
+        "loading": "Calculating flight route...",
+        "empty": "Select destination...",
+        "error": "Could not calculate route."
+      },
+      "layout": "Top half is a stark white canvas with a single sweeping SVG dashed arc between two airport codes (e.g., SFO -> DXB) in 24pt bold. Below, simple input rows for Date, Pax, Jet type. A sticky black 'Request Quote' CTA at the bottom."
+    },
+    {
+      "name": "My Trips",
+      "purpose": "List past and upcoming requested quotes with their status.",
+      "states": {
+        "loading": "Loading trips...",
+        "empty": "Illustration of a solitary jet. 'No upcoming journeys.'",
+        "error": "Could not load trips."
+      },
+      "layout": "Editorial list layout. Each row has the route code prominently, date, and a pill-shaped status indicator. Generous padding (16pt or 24pt) between rows, separated by a 0.5pt divider."
+    },
+    {
+      "name": "AI Concierge",
+      "purpose": "Direct access to luxury support via chat.",
+      "states": {
+        "loading": "Connecting to concierge...",
+        "empty": "Start a conversation...",
+        "error": "Connection lost."
+      },
+      "layout": "Minimal chat interface. Messages on surfaceSecondary (gray) for AI and brandPrimary (black) for user. Input field fixed above the keyboard."
+    }
+  ],
+  "images": {
+    "hero_jet_global": {
+      "url": "https://images.unsplash.com/photo-1582744345075-cb3b8bce44ff?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjV8MHwxfHNlYXJjaHwyfHxwcml2YXRlJTIwamV0JTIwc2lkZSUyMHByb2ZpbGUlMjB3aGl0ZSUyMGJhY2tncm91bmR8ZW58MHx8fHwxNzk0NTE0MjY1fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Bombardier Global Jet"
+    },
+    "hero_jet_gulfstream": {
+      "url": "https://images.unsplash.com/photo-1684838200815-36eef38f353c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjV8MHwxfHNlYXJjaHwxfHxwcml2YXRlJTIwamV0JTIwc2lkZSUyMHByb2ZpbGUlMjB3aGl0ZSUyMGJhY2tncm91bmR8ZW58MHx8fHwxNzk0NTE0MjY1fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Gulfstream Jet"
+    },
+    "empty_trips": {
+      "url": "https://images.unsplash.com/photo-1496176744020-6fa84b9bbf15?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjV8MHwxfHNlYXJjaHwzfHxwcml2YXRlJTIwamV0JTIwc2lkZSUyMHByb2ZpbGUlMjB3aGl0ZSUyMGJhY2tncm91bmR8ZW58MHx8fHwxNzk0NTE0MjY1fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Empty Trips Illustration"
+    }
+  },
+  "instructions_to_main_agent": [
+    "IMPORTANT: The problem statement explicitly requires 'Clean minimal illustrations of the jets on white backgrounds'. The image selector returned tarmac/sky photos. You MUST use image_generation_tool (if available) to generate minimalist illustrations of a Bombardier Global, Challenger, and Gulfstream on a PURE WHITE background to override the unsplash fallback URLs.",
+    "Implement the 'Charter Quote' map as a stylized SVG arc on a white background, NOT real map tiles, matching the 'slick modern minimalist' requirement.",
+    "Use tabular numbers ('tabular-nums') for all flight stats (speed, pax, range, price) so they align perfectly in the editorial layout.",
+    "Maintain the Editorial LIGHT theme: stark monochrome contrast (Black and White) with only subtle muted champagne/gold accents for luxury. NO BLUES OR PURPLES.",
+    "Ensure 'Request Quote' is a sticky CTA at the bottom of the scrollable content in the quote request screen."
+  ],
+  "haptics": {
+    "primary_cta": "impactMedium",
+    "tab_switch": "selection",
+    "fleet_selection": "impactLight",
+    "send_message": "impactLight"
+  }
+}

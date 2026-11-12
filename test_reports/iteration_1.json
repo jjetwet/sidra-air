@@ -1,0 +1,38 @@
+{
+  "summary": "First full test run for SIDRA charter app. Backend: 22/22 pytest tests passed covering fleet, airports, estimate validation (same airport/unknown jet), quotes CRUD (pax>seats 400, invalid email 422, return without return_date 400, create/list/get/cancel with device_id scoping, invalid ObjectId -> 404), and concierge SSE streaming + history persistence + clear. Frontend: all core flows verified end-to-end on 390x844 mobile viewport - fleet grid with 9 jets, family filters (All/Global/Challenger/Gulfstream) correctly subset (Global=3), jet-card -> jet-detail -> 'Charter this jet' preselects the jet in Charter screen. Charter screen: airport picker (From/To) with search works, swap reverses endpoints, route map + estimate render, trip type/date strips/pax +/- all interactive, form submission creates a quote, toast shows briefly and user lands on /trip/{id}. Trips tab correctly shows empty state when no quotes and lists the quote when present; trip detail cancel flow (trip-cancel-button -> cancel-confirm-button) updates status to 'Cancelled' and re-renders 'This request has been cancelled'. Concierge tab shows SIDRA mark, suggestions, accepts input, streams Claude response via SSE (user+assistant messages persisted), and clear-history resets to empty state. One Expo deprecation warning: expo-router/unstable-native-tabs is deprecated (console warning on every page). No React Native red-screen errors, no 500s, no deprecated-package usages (expo-av/expo-barcode-scanner/expo-background-fetch not present).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "expo-router native tabs", "issue": "Console warning on every screen: '`expo-router/unstable-native-tabs` is deprecated. Use `expo-router/native-tabs` instead.' Likely imported in /app/frontend/app/(tabs)/_layout.tsx. Not a crash, but should be migrated."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_sidra_backend.py",
+    "/app/test_reports/pytest/sidra_results.xml"
+  ],
+  "action_items": [
+    "Migrate from 'expo-router/unstable-native-tabs' to 'expo-router/native-tabs' in app/(tabs)/_layout.tsx to silence the deprecation warning."
+  ],
+  "critical_code_review_comments": [
+    "server.py: Good separation of static FLEET/AIRPORTS, proper HTTPException codes (400/404/422), ObjectId validated in _oid before Mongo calls, _id excluded from public payloads via BaseDocument.public(), indexes created on startup for quotes and concierge_messages by device_id+created_at.",
+    "Concierge SSE: writes user message synchronously before streaming; assistant message written after stream completes and before 'done' event - correct ordering for history consistency.",
+    "api.ts: fetch wrapper surfaces Pydantic validation first-error message nicely. Device id generated and cached in storage; good for no-auth model.",
+    "Charter screen correctly clamps pax +/- to selected jet's seat count (Math.min(jet?.pax ?? 19, p + 1)) - matches backend validation.",
+    "Minor: /api/quotes/estimate returns 400 with 'Unknown airport' even when only one code is unknown - acceptable but could be more specific. Low priority."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_sidra_backend.py (new)"
+  ],
+  "success_rate": {"backend": "100% (22/22)", "frontend": "100% of critical flows"},
+  "seed_data_creation": "Created a handful of TEST_ quotes and TEST_ concierge messages during backend + frontend runs; all backend-created records removed by pytest teardown, and frontend-created ones cleaned up via Mongo delete on test email/name/device-id prefixes. No production/user data touched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend tests live at /app/backend/tests/test_sidra_backend.py. Run with: EXPO_PUBLIC_BACKEND_URL=<url> MONGO_URL=mongodb://localhost:27017 DB_NAME=test_database python -m pytest backend/tests/test_sidra_backend.py -v -o addopts=''. device_id scheme: each web browser session generates a fresh m_<...> id in storage - so a new automation session starts with an empty Trips list. To test trips list in a single session, create a quote then navigate back via trip-detail-back-button and tap the 'Trips' tab (text selector works). Concierge streaming can take 5-10s for the first assistant chunk; wait ~8s before asserting message bubbles. Testing was all via public EXPO_PUBLIC_BACKEND_URL on mobile viewport 390x844.",
+  "rca_of_issue": "N/A - no functional defects found. The deprecation warning for expo-router/unstable-native-tabs is a non-breaking Expo API migration notice: RCA is that app/(tabs)/_layout.tsx imports the unstable path instead of the now-stable 'expo-router/native-tabs'; fix is a one-line import rename."
+}
