@@ -7,17 +7,11 @@ import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-nativ
 import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, Guest, maskPassport, Quote } from "@/src/api";
+import { api, asDate, Guest, maskPassport, Quote } from "@/src/api";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 const EMPTY: Guest = { full_name: "", nationality: "", date_of_birth: "", passport_number: "", passport_expiry: "" };
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
-
-// Formats typed digits as YYYY-MM-DD
-const asDate = (v: string) => {
-  const d = v.replace(/\D/g, "").slice(0, 8);
-  return [d.slice(0, 4), d.slice(4, 6), d.slice(6, 8)].filter(Boolean).join("-");
-};
 
 export default function GuestManifest() {
   const styles = useStyles();
@@ -106,7 +100,7 @@ export default function GuestManifest() {
                   <Pressable style={styles.cardHead} onPress={() => setOpen(expanded ? null : i)} testID={`manifest-guest-toggle-${i}`}>
                     <View style={styles.num}><Text style={styles.numText}>{i + 1}</Text></View>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.name}>{g.full_name || `Guest ${i + 1}`}</Text>
+                      <Text style={styles.name}>{g.full_name || `Guest ${i + 1}`}{i === 0 ? <Text style={styles.meta}>  · Lead passenger</Text> : null}</Text>
                       {!expanded && g.passport_number ? (
                         <Text style={styles.meta}>{g.nationality} · {maskPassport(g.passport_number)}</Text>
                       ) : null}

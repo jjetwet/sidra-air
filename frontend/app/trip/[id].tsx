@@ -6,7 +6,7 @@ import { useState } from "react";
 import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, formatDate, formatDuration, Quote, usd } from "@/src/api";
+import { api, formatDate, formatDuration, maskPassport, Quote, usd } from "@/src/api";
 import { ItineraryShare } from "@/src/components/ItineraryShare";
 import { RouteMap } from "@/src/components/RouteMap";
 import { StatusPill } from "@/src/components/StatusPill";
@@ -90,6 +90,19 @@ export default function TripDetail() {
             <View style={styles.teamNote} testID="trip-detail-team-message">
               <Text style={styles.label}>From the SIDRA team</Text>
               <Text style={styles.body}>{q.team_message}</Text>
+            </View>
+          ) : null}
+
+          {q.guests?.[0] ? (
+            <View style={styles.leadCard} testID="trip-detail-lead-passenger">
+              <Text style={styles.label}>Lead passenger</Text>
+              <Text style={styles.leadName} testID="trip-detail-lead-name">{q.guests[0].full_name}</Text>
+              <Text style={styles.body}>
+                {q.guests[0].nationality} · Born {formatDate(q.guests[0].date_of_birth)}
+              </Text>
+              <Text style={styles.body}>
+                Passport {maskPassport(q.guests[0].passport_number)} · Expires {formatDate(q.guests[0].passport_expiry)}
+              </Text>
             </View>
           ) : null}
 
@@ -210,6 +223,8 @@ const useStyles = makeStyles((c) => ({
   manifest: { flexDirection: "row", alignItems: "center", gap: 16, marginHorizontal: 24, marginTop: 24, paddingHorizontal: 16, minHeight: 64, borderWidth: 1, borderColor: c.border, borderRadius: 4 },
   manifestTitle: { fontFamily: fonts.text, fontSize: 15, color: c.onSurface },
   manifestSub: { fontFamily: fonts.text, fontSize: 12, color: c.muted, marginTop: 2 },
+  leadCard: { marginHorizontal: 24, marginTop: 24, padding: 16, borderWidth: 1, borderColor: c.border, borderRadius: 4, gap: 2 },
+  leadName: { fontFamily: fonts.display, fontSize: 20, color: c.onSurface, marginBottom: 4 },
   teamNote: { marginHorizontal: 24, marginTop: 24, padding: 16, backgroundColor: c.brandTertiary, borderRadius: 4 },
   secondaryText: { fontFamily: fonts.text, fontSize: 15, color: c.onSurface },
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" },

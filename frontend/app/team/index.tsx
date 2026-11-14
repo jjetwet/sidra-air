@@ -87,6 +87,7 @@ export default function TeamDashboard() {
                 <StatusPill status={item.status} />
               </View>
               <Text style={styles.meta}>{item.name} · {item.pax} guests · {item.jet_name}</Text>
+              {item.guests?.[0] ? <Text style={styles.sub}>Lead: {item.guests[0].full_name} · {item.guests[0].nationality}</Text> : null}
               <Text style={styles.sub}>
                 {formatDate(item.depart_date)} · {item.final_price_usd ? `Final ${usd(item.final_price_usd)}` : `Est. ${usd(item.estimated_price_usd)}`}
               </Text>

@@ -62,6 +62,12 @@ export type Guest = {
 
 export const maskPassport = (p: string) => (p.length > 3 ? `•••• ${p.slice(-3)}` : p);
 
+// Formats typed digits as YYYY-MM-DD
+export const asDate = (v: string) => {
+  const d = v.replace(/\D/g, "").slice(0, 8);
+  return [d.slice(0, 4), d.slice(4, 6), d.slice(6, 8)].filter(Boolean).join("-");
+};
+
 export type ChatMessage = { id: string; role: "user" | "assistant"; content: string; created_at: string };
 
 export type User = { user_id: string; email: string; name: string; picture?: string | null; is_admin: boolean };

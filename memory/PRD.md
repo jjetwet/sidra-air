@@ -36,3 +36,7 @@ Clean minimal jet illustrations (AI-generated, bundled) · AI concierge chat (Cl
 
 ## Iteration 5 (2026-06)
 - Manifest reminder: backend sweep every 30 min emails members (once per trip) when departure (date + window hour, UTC) is within 72h, status Requested/Confirmed, and guests < pax; skips requests < 1h old. Field manifest_reminder_sent_at.
+
+## Iteration 6 (2026-06)
+- Testing mode: AUTO_CONFIRM_TESTING=true auto-confirms new requests at estimated price (+ confirmation email). Set false to restore team confirmation.
+- Lead passenger (name, nationality, DOB, passport no. & expiry) required on the Charter booking form; stored as guest 1; shown on trip detail, manifest, team screens

@@ -9,7 +9,7 @@ import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboa
 import Animated, { FadeIn, FadeInUp, FadeOutUp } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Airport, api, Estimate, formatDate, formatDuration, Quote, usd } from "@/src/api";
+import { Airport, api, asDate, Estimate, formatDate, formatDuration, Guest, Quote, usd } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { AirportPicker } from "@/src/components/AirportPicker";
 import { BrandHeader } from "@/src/components/Brand";
@@ -21,6 +21,7 @@ import { fonts, makeStyles, useTheme } from "@/src/theme";
 import { storage } from "@/src/utils/storage";
 
 const WINDOWS = ["Flexible", "Morning", "Afternoon", "Evening"] as const;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 const iso = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -58,6 +59,8 @@ export default function CharterScreen() {
   const [picker, setPicker] = useState<null | "from" | "to">(null);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lead, setLead] = useState<Guest>({ full_name: "", nationality: "", date_of_birth: "", passport_number: "", passport_expiry: "" });
+  const setLeadField = (patch: Partial<Guest>) => setLead((l) => ({ ...l, ...patch }));
 
   useEffect(() => {
     if (params.jet) setJetId(params.jet);
@@ -67,6 +70,14 @@ export default function CharterScreen() {
     (async () => {
       setName((await storage.getItem("sidra_name", "")) || user?.name || "");
       setEmail((await storage.getItem("sidra_email", "")) || user?.email || "");
+      const saved = await storage.secureGet("sidra_lead", "");
+      if (saved) {
+        try {
+          setLead(JSON.parse(saved));
+          return;
+        } catch {}
+      }
+      setLead((l) => ({ ...l, full_name: l.full_name || user?.name || "" }));
     })();
   }, [user]);
 
@@ -105,15 +116,17 @@ export default function CharterScreen() {
           name: name.trim(),
           email: email.trim(),
           notes: notes.trim(),
+          lead_passenger: { ...lead, full_name: lead.full_name.trim(), nationality: lead.nationality.trim(), passport_number: lead.passport_number.replace(/\s/g, "") },
         }),
       }),
     onSuccess: async (q) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       await storage.setItem("sidra_name", name.trim());
       await storage.setItem("sidra_email", email.trim());
+      await storage.secureSet("sidra_lead", JSON.stringify(lead));
       setNotes("");
       qc.invalidateQueries({ queryKey: ["quotes"] });
-      setToast(`Quote requested · ${q.from_code} → ${q.to_code}`);
+      setToast(q.status === "Confirmed" ? `Flight confirmed · ${q.from_code} → ${q.to_code}` : `Quote requested · ${q.from_code} → ${q.to_code}`);
       setTimeout(() => {
         setToast(null);
         router.navigate(`/trip/${q.id}`);
@@ -127,6 +140,10 @@ export default function CharterScreen() {
     if (!name.trim()) return setError("Please add your name.");
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) return setError("Please add a valid email.");
     if (tripType === "return" && ret <= depart) return setError("Return must be after departure.");
+    if (!lead.full_name.trim() || !lead.nationality.trim() || lead.passport_number.trim().length < 4)
+      return setError("Please complete the lead passenger's details.");
+    if (!DATE_RE.test(lead.date_of_birth) || !DATE_RE.test(lead.passport_expiry))
+      return setError("Use YYYY-MM-DD for the lead passenger's dates.");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     submit.mutate();
   };
@@ -249,6 +266,15 @@ export default function CharterScreen() {
               );
             })}
           </ScrollView>
+        </Section>
+
+        <Section title="Lead passenger">
+          <Text style={styles.leadHint}>As shown on the passport. Add other guests from the trip later.</Text>
+          <Field label="Full name" value={lead.full_name} onChangeText={(v) => setLeadField({ full_name: v })} testID="lead-name-input" autoCapitalize="words" />
+          <Field label="Nationality" value={lead.nationality} onChangeText={(v) => setLeadField({ nationality: v })} testID="lead-nationality-input" autoCapitalize="words" />
+          <Field label="Date of birth (YYYY-MM-DD)" value={lead.date_of_birth} onChangeText={(v) => setLeadField({ date_of_birth: asDate(v) })} testID="lead-dob-input" keyboardType="number-pad" placeholder="1985-04-12" />
+          <Field label="Passport number" value={lead.passport_number} onChangeText={(v) => setLeadField({ passport_number: v.toUpperCase() })} testID="lead-passport-input" autoCapitalize="characters" autoCorrect={false} />
+          <Field label="Passport expiry (YYYY-MM-DD)" value={lead.passport_expiry} onChangeText={(v) => setLeadField({ passport_expiry: asDate(v) })} testID="lead-expiry-input" keyboardType="number-pad" placeholder="2031-09-30" />
         </Section>
 
         <Section title="Member details">
@@ -407,6 +433,7 @@ const useStyles = makeStyles((c) => ({
   fieldLabel: { fontFamily: fonts.text, fontSize: 11, color: c.muted, letterSpacing: 0.5, marginBottom: 6 },
   input: { minHeight: 48, borderWidth: 1, borderColor: c.border, borderRadius: 4, paddingHorizontal: 12, fontFamily: fonts.text, fontSize: 16, color: c.onSurface, backgroundColor: c.surface },
   error: { fontFamily: fonts.text, fontSize: 13, color: c.error, paddingHorizontal: 24 },
+  leadHint: { fontFamily: fonts.text, fontSize: 13, color: c.muted, marginTop: -4, marginBottom: 12 },
   cta: { flexDirection: "row", alignItems: "center", gap: 16, paddingHorizontal: 24, paddingTop: 12, backgroundColor: c.surface, borderTopWidth: 0.5, borderTopColor: c.border },
   ctaLabel: { fontFamily: fonts.text, fontSize: 11, color: c.muted },
   ctaPrice: { fontFamily: fonts.text, fontSize: 22, fontWeight: "600", color: c.onSurface, fontVariant: ["tabular-nums"] },

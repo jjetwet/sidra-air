@@ -114,7 +114,7 @@ export default function TeamQuote() {
             {q.guests?.length ? (
               q.guests.map((g, i) => (
                 <View key={g.id ?? i} style={styles.guest} testID={`team-guest-${i}`}>
-                  <Text style={styles.guestName}>{g.full_name}</Text>
+                  <Text style={styles.guestName}>{g.full_name}{i === 0 ? "  · Lead passenger" : ""}</Text>
                   <Text style={styles.guestMeta}>
                     {g.nationality} · Born {formatDate(g.date_of_birth)}
                   </Text>
