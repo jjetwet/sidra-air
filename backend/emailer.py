@@ -209,6 +209,25 @@ def team_alert(q: dict, airports: dict) -> tuple[str, str]:
     return subject, html
 
 
+def manifest_reminder(q: dict, airports: dict) -> tuple[str, str]:
+    first = escape(q["name"].split(" ")[0])
+    added = len(q.get("guests") or [])
+    missing = q["pax"] - added
+    subject = f"Action needed: guest details for {q['from_code']} to {q['to_code']}"
+    html = _layout(
+        "Please complete your guest manifest before departure.",
+        "Your guest manifest is incomplete.",
+        f"Hello {first}, your flight departs within 72 hours. We still need passport details for "
+        f"{missing} guest{'s' if missing != 1 else ''} so we can clear border and handling formalities in good time.",
+        q,
+        airports,
+        [("Guests added", f"{added} of {q['pax']}")],
+        "Open the SIDRA app, go to Trips, choose this flight and tap Guest manifest to add each traveller. "
+        "Prefer to send details another way? Simply reply to this email and the team will help.",
+    )
+    return subject, html
+
+
 def flight_confirmed(q: dict, airports: dict) -> tuple[str, str]:
     first = escape(q["name"].split(" ")[0])
     subject = f"Your flight is confirmed · {q['from_code']} to {q['to_code']}"

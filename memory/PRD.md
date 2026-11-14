@@ -33,3 +33,6 @@ Clean minimal jet illustrations (AI-generated, bundled) · AI concierge chat (Cl
 ## Iteration 4 (2026-06)
 - New request alerts: branded "New quote request" email to TEAM_ALERT_EMAILS (joshua@flysidra.com) on every member request
 - Guest manifest: members add name, nationality, DOB, passport number & expiry per guest (up to pax); validated (DOB past, passport valid past trip end); team sees full manifest
+
+## Iteration 5 (2026-06)
+- Manifest reminder: backend sweep every 30 min emails members (once per trip) when departure (date + window hour, UTC) is within 72h, status Requested/Confirmed, and guests < pax; skips requests < 1h old. Field manifest_reminder_sent_at.

@@ -208,6 +208,7 @@ class Quote(BaseDocument):
     final_price_usd: Optional[float] = None
     team_message: Optional[str] = None
     email_status: Optional[str] = None
+    manifest_reminder_sent_at: Optional[str] = None
     guests: list[dict] = []
     created_at: str
     updated_at: Optional[str] = None
@@ -620,11 +621,64 @@ app.add_middleware(
 @app.on_event("startup")
 async def start_index_build():
     app.state.index_task = asyncio.create_task(ensure_indexes())
+    app.state.reminder_task = asyncio.create_task(manifest_reminder_loop())
+
+
+# ---------------------------------------------------------------- Manifest reminders
+WINDOW_HOUR = {"Morning": 8, "Afternoon": 13, "Evening": 18, "Flexible": 9}
+REMINDER_HOURS = 72
+REMINDER_INTERVAL_SECONDS = 30 * 60
+
+
+def departure_at(q: dict) -> datetime:
+    d = datetime.strptime(q["depart_date"], "%Y-%m-%d")
+    return d.replace(hour=WINDOW_HOUR.get(q.get("depart_window"), 9), tzinfo=timezone.utc)
+
+
+async def send_manifest_reminders() -> int:
+    """Email members whose trip departs within 72h and whose manifest is incomplete. Once per trip."""
+    now = datetime.now(timezone.utc)
+    horizon = (now + timedelta(hours=REMINDER_HOURS)).date().isoformat()
+    cursor = db.quotes.find({
+        "status": {"$in": ["Requested", "Confirmed"]},
+        "depart_date": {"$gte": now.date().isoformat(), "$lte": horizon},
+        "manifest_reminder_sent_at": None,
+    })
+    sent = 0
+    async for doc in cursor:
+        q = Quote.from_mongo(doc).public()
+        dep = departure_at(q)
+        if not (now < dep <= now + timedelta(hours=REMINDER_HOURS)):
+            continue
+        if len(q.get("guests") or []) >= q["pax"]:
+            continue
+        if datetime.fromisoformat(q["created_at"]) > now - timedelta(hours=1):
+            continue  # give brand-new requests an hour first
+        subject, html = emailer.manifest_reminder(q, AIRPORTS_BY_CODE)
+        status = await _try_send(q["email"], subject, html, "sent", "failed")
+        if status == "sent":
+            await db.quotes.update_one({"_id": doc["_id"]}, {"$set": {"manifest_reminder_sent_at": now_iso()}})
+            sent += 1
+    return sent
+
+
+async def manifest_reminder_loop():
+    while True:
+        try:
+            n = await send_manifest_reminders()
+            if n:
+                logger.info("manifest reminders sent: %s", n)
+        except Exception as exc:
+            logger.error("manifest reminder sweep failed: %s", exc)
+        await asyncio.sleep(REMINDER_INTERVAL_SECONDS)
 
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
     app.state.index_task.cancel()
+    app.state.reminder_task.cancel()
     with suppress(asyncio.CancelledError):
         await app.state.index_task
+    with suppress(asyncio.CancelledError):
+        await app.state.reminder_task
     client.close()
