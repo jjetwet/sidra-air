@@ -1,0 +1,28 @@
+{
+  "summary": "Iteration-13 test of keyboard dismissal on Enter on the login screen (frontend only, web preview). Passed (6/6). Pressing Enter blurs every field (document.activeElement goes to BODY). Access code 2893159 + Enter moves to the 'Create your account.' step. An empty code + Enter shows 'Please enter your access code.' and blurs. Full name + Enter on the Create step blurs, with no submit and no error. Email + Enter blurs, with no submit and no error, on both the Create and Sign-in steps. Password + Enter blurs and signs in as joshua@flysidra.com, landing on Book home (/). Regressions: at 390x844 the code, create and sign-in steps are all overflowY hidden (scrollHeight 844 = clientHeight) and the wheel does nothing. At 375x667 the Create step is overflowY auto (780 in 667) and the wheel scrolls it to 113, after which the button (y 531-587) and the Sign in link (y 599-643) are fully visible. Native keyboard dismissal can't be checked on web. In code it is correct: returnKeyType done, submitBehavior blurAndSubmit, Keyboard.dismiss in the default onSubmitEditing and at the start of submit(). Deprecated packages: none in login.tsx.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "access-code-input (iOS number-pad)", "issue": "The iOS number-pad keyboard has no return/Done key, so on iPhone this field can't send onSubmitEditing and Enter can't dismiss the keyboard. The user has to tap outside the field or press Continue. Android's number pad does have a Done key. Reference: /app/frontend/app/login.tsx:102"}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Optional (LOW): on iOS, give the access code field a way to close the keyboard, since number-pad has no return key. Options: an InputAccessoryView with a 'Done' button, or keyboardType='numbers-and-punctuation' / 'default' with inputMode='numeric'. Alternatively, wrap the screen in a Pressable with onPress={Keyboard.dismiss} so tapping blank space closes it."
+  ],
+  "critical_code_review_comments": [
+    "login.tsx:144: the default props are spread before {...rest}, so onSubmitEditing={submit} correctly overrides Keyboard.dismiss on the code and password fields, and submit() calls Keyboard.dismiss() itself at line 53. Correct.",
+    "On react-native-web 0.21.4, submitBehavior is ignored. Single-line inputs blur on submit by default (blurOnSubmit defaults to !multiline), and the observed behaviour matches native.",
+    "UX nicety (not a bug): the email field could use returnKeyType='next' and focus the password field instead of just dismissing. The current behaviour matches the user's request."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (not requested)", "frontend": "100% (6/6 requested checks)"},
+  "seed_data_creation": "None. No accounts were created: Create account was never submitted. Joshua's account was only used to sign in.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Login testIDs: access-code-input, access-submit-button, register-name-input, auth-email-input, auth-password-input, go-sign-in-link, go-access-code-link, access-title, login-error. To check blur, use document.activeElement's data-testid after page.press(selector, 'Enter'). To check scroll, walk up from access-submit-button to the first non-body ancestor with overflowY auto/hidden.",
+  "rca_of_issue": "Before this fix the keyboard stayed up after Enter. Now every Field gets returnKeyType done, submitBehavior blurAndSubmit and onSubmitEditing Keyboard.dismiss. Verified on web by the blur. The one gap is the iOS number-pad, which has no return key."
+}

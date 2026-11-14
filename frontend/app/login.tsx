@@ -2,7 +2,7 @@ import Feather from "@react-native-vector-icons/feather";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Keyboard, Platform, Pressable, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView, useKeyboardState } from "react-native-keyboard-controller";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -50,6 +50,7 @@ export default function Access() {
   };
 
   const submit = () => {
+    Keyboard.dismiss();
     if (step === "code") {
       if (!code.trim()) return setError("Please enter your access code.");
       return run(async () => {
@@ -98,7 +99,7 @@ export default function Access() {
 
         <View style={styles.form}>
           {step === "code" && (
-            <Field label="Access code" value={code} onChangeText={setCode} testID="access-code-input" keyboardType="number-pad" autoFocus onSubmitEditing={submit} />
+            <Field label="Access code" value={code} onChangeText={setCode} testID="access-code-input" keyboardType={Platform.OS === "ios" ? "numbers-and-punctuation" : "number-pad"} autoFocus onSubmitEditing={submit} />
           )}
           {step === "create" && (
             <Field label="Full name" value={name} onChangeText={setName} testID="register-name-input" autoCapitalize="words" />
@@ -140,7 +141,7 @@ function Field(props: React.ComponentProps<typeof TextInput> & { label: string }
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
-      <TextInput {...rest} placeholderTextColor={colors.muted} style={styles.input} />
+      <TextInput returnKeyType="done" submitBehavior="blurAndSubmit" onSubmitEditing={() => Keyboard.dismiss()} {...rest} placeholderTextColor={colors.muted} style={styles.input} />
     </View>
   );
 }
