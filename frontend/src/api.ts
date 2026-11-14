@@ -5,7 +5,7 @@ export const API = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api`;
 export type Jet = {
   id: string;
   maker: string;
-  family: "Global" | "Challenger" | "Gulfstream";
+  family: "Global" | "Challenger" | "Gulfstream" | "Boeing";
   name: string;
   pax: number;
   range_nm: number;
@@ -19,6 +19,17 @@ export type Jet = {
 };
 
 export type Airport = { code: string; city: string; name: string; country: string; lat: number; lon: number };
+
+export type PopularRoute = {
+  from_code: string;
+  to_code: string;
+  from_city: string;
+  to_city: string;
+  jet_id: string;
+  jet_name: string;
+  flight_minutes: number;
+  estimated_price_usd: number;
+};
 
 export type Estimate = {
   distance_nm: number;
@@ -46,6 +57,7 @@ export type Quote = Estimate & {
   final_price_usd?: number | null;
   team_message?: string | null;
   email_status?: string | null;
+  payment_status?: string | null;
   guests?: Guest[];
   created_at: string;
   updated_at?: string | null;

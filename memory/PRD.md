@@ -40,3 +40,9 @@ Clean minimal jet illustrations (AI-generated, bundled) · AI concierge chat (Cl
 ## Iteration 6 (2026-06)
 - Testing mode: AUTO_CONFIRM_TESTING=true auto-confirms new requests at estimated price (+ confirmation email). Set false to restore team confirmation.
 - Lead passenger (name, nationality, DOB, passport no. & expiry) required on the Charter booking form; stored as guest 1; shown on trip detail, manifest, team screens
+
+## Iteration 7 (2026-06)
+- XO style Book home tab (search widget, hero carousel, referral benefits card, popular routes), Fleet tab with search + Boeing filter, BBJ added with illustration, Charter moved to stack screen
+- Corporate copy throughout (no hyphens), Manrope font
+- Invite only access: code 2893159 then create account (email + password, JWT); Google sign in removed
+- Stripe Checkout (card + Apple Pay) for confirmed charters, full price; needs STRIPE_API_KEY

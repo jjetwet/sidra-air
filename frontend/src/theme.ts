@@ -53,8 +53,9 @@ export const defaultScheme = "light" satisfies ColorScheme;
 export const themes: { light: ThemeColors; dark?: ThemeColors } = { light };
 
 export const fonts = {
-  display: "Playfair",
-  text: "DMSans",
+  display: "ManropeSemiBold",
+  text: "Manrope",
+  bold: "ManropeBold",
 };
 
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, "2xl": 32, "3xl": 48 };

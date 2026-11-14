@@ -4,18 +4,17 @@ import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 import Animated, { FadeIn, FadeInUp, FadeOutUp } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Airport, api, asDate, Estimate, formatDate, formatDuration, Guest, Quote, usd } from "@/src/api";
+import { Airport, api, asDate, Estimate, formatDuration, Guest, Quote, usd } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { AirportPicker } from "@/src/components/AirportPicker";
-import { BrandHeader } from "@/src/components/Brand";
+import { DateStrip, DAYS, isoDate } from "@/src/components/DateStrip";
 import { RouteMap } from "@/src/components/RouteMap";
 import { JET_IMAGES } from "@/src/jets";
-import { usesNativeTabs } from "@/src/navigation";
 import { useAirports, useFleet } from "@/src/queries";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 import { storage } from "@/src/utils/storage";
@@ -23,24 +22,13 @@ import { storage } from "@/src/utils/storage";
 const WINDOWS = ["Flexible", "Morning", "Afternoon", "Evening"] as const;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-const iso = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-
-const DAYS = Array.from({ length: 60 }, (_, i) => {
-  const d = new Date();
-  d.setDate(d.getDate() + i + 1);
-  return d;
-});
-
 export default function CharterScreen() {
   const styles = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const bottomChrome = usesNativeTabs ? insets.bottom : 0;
-  const tabBarHeight = (Platform.OS === "web" ? 64 : 49) + insets.bottom;
   const router = useRouter();
   const qc = useQueryClient();
-  const params = useLocalSearchParams<{ jet?: string }>();
+  const params = useLocalSearchParams<{ jet?: string; from?: string; to?: string; pax?: string; trip?: string; depart?: string; ret?: string }>();
   const { user } = useAuth();
   const { data: fleet } = useFleet();
   const { data: airports } = useAirports();
@@ -49,8 +37,8 @@ export default function CharterScreen() {
   const [toCode, setToCode] = useState("LBG");
   const [jetId, setJetId] = useState("global-7500");
   const [tripType, setTripType] = useState<"one_way" | "return">("one_way");
-  const [depart, setDepart] = useState(iso(DAYS[6]));
-  const [ret, setRet] = useState(iso(DAYS[13]));
+  const [depart, setDepart] = useState(isoDate(DAYS[6]));
+  const [ret, setRet] = useState(isoDate(DAYS[13]));
   const [windowPref, setWindowPref] = useState<(typeof WINDOWS)[number]>("Flexible");
   const [pax, setPax] = useState(4);
   const [name, setName] = useState("");
@@ -64,7 +52,13 @@ export default function CharterScreen() {
 
   useEffect(() => {
     if (params.jet) setJetId(params.jet);
-  }, [params.jet]);
+    if (params.from) setFromCode(params.from);
+    if (params.to) setToCode(params.to);
+    if (params.pax) setPax(Math.max(1, Number(params.pax) || 1));
+    if (params.trip === "return" || params.trip === "one_way") setTripType(params.trip);
+    if (params.depart) setDepart(params.depart);
+    if (params.ret) setRet(params.ret);
+  }, [params.jet, params.from, params.to, params.pax, params.trip, params.depart, params.ret]);
 
   useEffect(() => {
     (async () => {
@@ -155,8 +149,14 @@ export default function CharterScreen() {
   };
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top + 16 }]} testID="charter-screen">
-      <BrandHeader title="Charter" subtitle="Request a quote in under a minute" />
+    <View style={styles.root} testID="charter-screen">
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+        <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))} style={styles.iconBtn} testID="charter-back-button">
+          <Feather name="arrow-left" size={22} color={colors.onSurface} />
+        </Pressable>
+        <Text style={styles.headerTitle}>CHARTER</Text>
+        <View style={styles.iconBtn} />
+      </View>
 
       <KeyboardAwareScrollView
         bottomOffset={96}
@@ -269,7 +269,7 @@ export default function CharterScreen() {
         </Section>
 
         <Section title="Lead passenger">
-          <Text style={styles.leadHint}>As shown on the passport. Add other guests from the trip later.</Text>
+          <Text style={styles.leadHint}>Enter details exactly as shown on the passport. Additional passengers can be added from the trip.</Text>
           <Field label="Full name" value={lead.full_name} onChangeText={(v) => setLeadField({ full_name: v })} testID="lead-name-input" autoCapitalize="words" />
           <Field label="Nationality" value={lead.nationality} onChangeText={(v) => setLeadField({ nationality: v })} testID="lead-nationality-input" autoCapitalize="words" />
           <Field label="Date of birth (YYYY-MM-DD)" value={lead.date_of_birth} onChangeText={(v) => setLeadField({ date_of_birth: asDate(v) })} testID="lead-dob-input" keyboardType="number-pad" placeholder="1985-04-12" />
@@ -277,16 +277,16 @@ export default function CharterScreen() {
           <Field label="Passport expiry (YYYY-MM-DD)" value={lead.passport_expiry} onChangeText={(v) => setLeadField({ passport_expiry: asDate(v) })} testID="lead-expiry-input" keyboardType="number-pad" placeholder="2031-09-30" />
         </Section>
 
-        <Section title="Member details">
+        <Section title="Booking contact">
           <Field label="Full name" value={name} onChangeText={setName} testID="charter-name-input" autoCapitalize="words" />
-          <Field label="Email" value={email} onChangeText={setEmail} testID="charter-email-input" keyboardType="email-address" autoCapitalize="none" />
-          <Field label="Requests (catering, pets, ground transport…)" value={notes} onChangeText={setNotes} testID="charter-notes-input" multiline />
+          <Field label="Work email" value={email} onChangeText={setEmail} testID="charter-email-input" keyboardType="email-address" autoCapitalize="none" />
+          <Field label="Special requirements (catering, ground transport, accessibility)" value={notes} onChangeText={setNotes} testID="charter-notes-input" multiline />
         </Section>
         {error ? <Text style={styles.error} testID="charter-error">{error}</Text> : null}
       </KeyboardAwareScrollView>
 
-      <KeyboardStickyView offset={{ closed: 0, opened: usesNativeTabs ? insets.bottom : tabBarHeight }}>
-        <View style={[styles.cta, { paddingBottom: bottomChrome + 12 }]}>
+      <KeyboardStickyView offset={{ closed: 0, opened: insets.bottom }}>
+        <View style={[styles.cta, { paddingBottom: insets.bottom + 12 }]}>
           <View style={{ flex: 1 }}>
             <Text style={styles.ctaLabel}>Estimated{tripType === "return" ? " · return" : ""}</Text>
             <Text style={styles.ctaPrice} testID="charter-estimated-price">
@@ -347,28 +347,6 @@ function EstStat({ label, value, testID }: { label: string; value: string; testI
   );
 }
 
-function DateStrip({ value, onChange, prefix }: { value: string; onChange: (v: string) => void; prefix: string }) {
-  const styles = useStyles();
-  return (
-    <View>
-      <Text style={styles.dateSelected} testID={`${prefix}-date-selected`}>{formatDate(value)}</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dateRow} style={{ marginHorizontal: -24 }}>
-        {DAYS.map((d) => {
-          const v = iso(d);
-          const on = v === value;
-          return (
-            <Pressable key={v} testID={`${prefix}-date-${v}`} onPress={() => onChange(v)} style={[styles.dateCell, on && styles.dateOn]}>
-              <Text style={[styles.dateDow, on && styles.dateTextOn]}>{d.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase()}</Text>
-              <Text style={[styles.dateNum, on && styles.dateTextOn]}>{d.getDate()}</Text>
-              <Text style={[styles.dateDow, on && styles.dateTextOn]}>{d.toLocaleDateString("en-US", { month: "short" })}</Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-    </View>
-  );
-}
-
 function Field(props: React.ComponentProps<typeof TextInput> & { label: string }) {
   const styles = useStyles();
   const { colors } = useTheme();
@@ -388,6 +366,9 @@ function Field(props: React.ComponentProps<typeof TextInput> & { label: string }
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 8, borderBottomWidth: 0.5, borderBottomColor: c.border, backgroundColor: c.surface },
+  iconBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  headerTitle: { fontFamily: fonts.text, fontSize: 12, letterSpacing: 3, color: c.onSurface },
   routeRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 24, paddingTop: 16 },
   endpoint: { flex: 1, minHeight: 44 },
   endLabel: { fontFamily: fonts.text, fontSize: 10, letterSpacing: 2, color: c.muted },
@@ -407,13 +388,6 @@ const useStyles = makeStyles((c) => ({
   segOn: { backgroundColor: c.brandPrimary },
   segText: { fontFamily: fonts.text, fontSize: 14, color: c.onSurface },
   segTextOn: { color: c.onBrandPrimary },
-  dateSelected: { fontFamily: fonts.text, fontSize: 14, color: c.onSurfaceSecondary, marginBottom: 8 },
-  dateRow: { gap: 8, paddingHorizontal: 24 },
-  dateCell: { flexShrink: 0, width: 56, height: 72, borderRadius: 4, borderWidth: 1, borderColor: c.border, alignItems: "center", justifyContent: "center" },
-  dateOn: { backgroundColor: c.brandPrimary, borderColor: c.brandPrimary },
-  dateDow: { fontFamily: fonts.text, fontSize: 10, color: c.muted, letterSpacing: 1 },
-  dateNum: { fontFamily: fonts.text, fontSize: 20, color: c.onSurface, fontVariant: ["tabular-nums"], marginVertical: 2 },
-  dateTextOn: { color: c.onBrandPrimary },
   chipRow: { height: 56, marginHorizontal: -24 },
   chipContent: { gap: 8, paddingHorizontal: 24, alignItems: "center", height: 56 },
   chip: { flexShrink: 0, height: 36, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor: c.border, justifyContent: "center" },

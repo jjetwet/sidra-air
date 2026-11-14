@@ -34,6 +34,7 @@ function Gate() {
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }}>
         <Stack.Protected guard={!!user}>
           <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="charter" />
           <Stack.Screen name="jet/[id]" />
           <Stack.Screen name="trip/[id]" />
           <Stack.Screen name="trip/guests/[id]" />
@@ -54,8 +55,9 @@ function Gate() {
 export default function RootLayout() {
   const { colors } = useTheme();
   const [loaded, error] = useFonts({
-    Playfair: require("../assets/fonts/PlayfairDisplay.ttf"),
-    DMSans: require("../assets/fonts/DMSans.ttf"),
+    Manrope: require("../assets/fonts/Manrope-400.ttf"),
+    ManropeSemiBold: require("../assets/fonts/Manrope-600.ttf"),
+    ManropeBold: require("../assets/fonts/Manrope-700.ttf"),
   });
 
   if (!loaded && !error) return <View style={[styles.root, { backgroundColor: colors.surfaceInverse }]} />;

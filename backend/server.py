@@ -6,7 +6,11 @@ from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, List, Literal, Optional
 
-import httpx
+import hmac
+
+import bcrypt
+import jwt
+import stripe
 from bson import ObjectId
 from dotenv import load_dotenv
 from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
@@ -16,6 +20,7 @@ from fastapi.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field
 from pymongo import ASCENDING, DESCENDING, IndexModel
+from pymongo.errors import DuplicateKeyError
 from starlette.middleware.cors import CORSMiddleware
 import logging
 import os
@@ -33,7 +38,10 @@ EMERGENT_LLM_KEY = os.environ["EMERGENT_LLM_KEY"]
 AUTO_CONFIRM_TESTING = os.environ.get("AUTO_CONFIRM_TESTING", "false").lower() == "true"
 TEAM_ALERT_EMAILS = [e.strip() for e in os.environ.get("TEAM_ALERT_EMAILS", "").split(",") if e.strip()]
 ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()}
-EMERGENT_SESSION_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
+JWT_SECRET = os.environ["JWT_SECRET"]
+JWT_TTL_DAYS = 30
+INVITE_CODE = os.environ["INVITE_CODE"]
+STRIPE_API_KEY = os.environ.get("STRIPE_API_KEY", "")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -98,32 +106,37 @@ def now_iso() -> str:
 FLEET = [
     {"id": "global-7500", "maker": "Bombardier", "family": "Global", "name": "Global 7500", "pax": 19, "range_nm": 7700, "speed_kts": 516, "hourly_usd": 16500, "cabin_ft": 54.0, "cabin_height_ft": 6.2, "living_spaces": 4,
      "tagline": "The flagship. Four true living spaces and a dedicated crew suite.",
-     "highlights": ["Full-size master suite with shower option", "Nuage seats with zero-gravity recline", "Ka-band Wi-Fi throughout", "Range for Dubai–Los Angeles nonstop"]},
+     "highlights": ["Master suite with optional shower", "Nuage seats with deep recline", "High speed Ka band connectivity", "Nonstop range from Dubai to Los Angeles"]},
     {"id": "global-6500", "maker": "Bombardier", "family": "Global", "name": "Global 6500", "pax": 17, "range_nm": 6600, "speed_kts": 488, "hourly_usd": 13500, "cabin_ft": 43.3, "cabin_height_ft": 6.2, "living_spaces": 3,
-     "tagline": "Smooth Flex Wing and a whisper-quiet cabin for long sectors.",
-     "highlights": ["Three-zone cabin with private stateroom", "Lowest cabin altitude in class", "Nuage seating", "London–Hong Kong nonstop"]},
+     "tagline": "Smooth Flex Wing and an exceptionally quiet cabin for long sectors.",
+     "highlights": ["Three-zone cabin with private stateroom", "Lowest cabin altitude in class", "Nuage seating", "Nonstop from London to Hong Kong"]},
     {"id": "global-5500", "maker": "Bombardier", "family": "Global", "name": "Global 5500", "pax": 16, "range_nm": 5900, "speed_kts": 488, "hourly_usd": 12000, "cabin_ft": 40.7, "cabin_height_ft": 6.2, "living_spaces": 3,
      "tagline": "Intercontinental reach with a wide, light-filled cabin.",
-     "highlights": ["Three living zones", "Full galley with oven", "Ka-band Wi-Fi", "Dubai–London with ease"]},
+     "highlights": ["Three living zones", "Full galley with oven", "High speed Ka band connectivity", "Dubai to London with ease"]},
     {"id": "challenger-650", "maker": "Bombardier", "family": "Challenger", "name": "Challenger 650", "pax": 12, "range_nm": 4000, "speed_kts": 470, "hourly_usd": 8500, "cabin_ft": 25.6, "cabin_height_ft": 6.0, "living_spaces": 2,
-     "tagline": "The widest cabin in its class. Proven, spacious, effortless.",
-     "highlights": ["Widest large-jet cabin in class", "Divan converts to full bed", "Forward galley", "Dubai–Geneva nonstop"]},
+     "tagline": "The widest cabin in its class. Proven, spacious and dependable.",
+     "highlights": ["Widest cabin among large business jets", "Divan converts to full bed", "Forward galley", "Nonstop from Dubai to Geneva"]},
     {"id": "challenger-3500", "maker": "Bombardier", "family": "Challenger", "name": "Challenger 3500", "pax": 10, "range_nm": 3400, "speed_kts": 470, "hourly_usd": 7000, "cabin_ft": 25.2, "cabin_height_ft": 6.0, "living_spaces": 2,
-     "tagline": "Super-midsize perfected. Nuage seats and a flat-floor cabin.",
-     "highlights": ["Nuage seats in a super-midsize", "Voice-controlled cabin", "Flat-floor cabin", "Transcontinental range"]},
+     "tagline": "The benchmark super midsize jet, with Nuage seating and a flat floor cabin.",
+     "highlights": ["Nuage seating throughout", "Voice controlled cabin", "Flat floor cabin", "Transcontinental range"]},
     {"id": "g700", "maker": "Gulfstream", "family": "Gulfstream", "name": "Gulfstream G700", "pax": 19, "range_nm": 7750, "speed_kts": 516, "hourly_usd": 17500, "cabin_ft": 56.11, "cabin_height_ft": 6.25, "living_spaces": 5,
      "tagline": "The tallest, widest, longest cabin in the industry.",
-     "highlights": ["Up to five living areas", "Ultragalley with crew rest", "Circadian lighting", "20 panoramic oval windows"]},
+     "highlights": ["Up to five living areas", "Ultragalley and crew rest area", "Circadian lighting", "20 panoramic oval windows"]},
     {"id": "g650er", "maker": "Gulfstream", "family": "Gulfstream", "name": "Gulfstream G650ER", "pax": 18, "range_nm": 7500, "speed_kts": 516, "hourly_usd": 15500, "cabin_ft": 46.83, "cabin_height_ft": 6.25, "living_spaces": 4,
-     "tagline": "An icon of ultra-long-range travel, near the speed of sound.",
-     "highlights": ["Four living areas", "100% fresh air system", "Panoramic oval windows", "Dubai–New York nonstop"]},
+     "tagline": "An icon of ultra long range travel, flying close to the speed of sound.",
+     "highlights": ["Four living areas", "100% fresh air system", "Panoramic oval windows", "Nonstop from Dubai to New York"]},
     {"id": "g500", "maker": "Gulfstream", "family": "Gulfstream", "name": "Gulfstream G500", "pax": 13, "range_nm": 5300, "speed_kts": 488, "hourly_usd": 11000, "cabin_ft": 41.5, "cabin_height_ft": 6.17, "living_spaces": 3,
-     "tagline": "Fast, quiet and quietly brilliant over long distances.",
-     "highlights": ["Three living areas", "Active-control sidesticks", "Low cabin altitude", "Fresh air, every 2 minutes"]},
+     "tagline": "Fast, quiet and highly capable over long distances.",
+     "highlights": ["Three living areas", "Active control sidesticks", "Low cabin altitude", "Fresh air, every 2 minutes"]},
     {"id": "g280", "maker": "Gulfstream", "family": "Gulfstream", "name": "Gulfstream G280", "pax": 10, "range_nm": 3600, "speed_kts": 459, "hourly_usd": 6800, "cabin_ft": 25.10, "cabin_height_ft": 6.25, "living_spaces": 2,
-     "tagline": "Super-midsize agility with Gulfstream refinement.",
-     "highlights": ["19 oval windows", "Baggage accessible in flight", "Full-size galley", "Short-runway capable"]},
+     "tagline": "Super midsize agility with Gulfstream refinement.",
+     "highlights": ["19 oval windows", "Baggage accessible in flight", "Full size galley", "Short runway capable"]},
 ]
+FLEET.append(
+    {"id": "bbj", "maker": "Boeing", "family": "Boeing", "name": "Boeing Business Jet", "pax": 19, "range_nm": 7000, "speed_kts": 470, "hourly_usd": 22000, "cabin_ft": 79.0, "cabin_height_ft": 7.0, "living_spaces": 5,
+     "tagline": "An airliner configured for business. Space to meet, work and rest in complete privacy.",
+     "highlights": ["Private stateroom with ensuite shower", "Conference and dining suite", "Full size galley and crew rest", "Over 1,000 sq ft of cabin"]}
+)
 FLEET_BY_ID = {j["id"]: j for j in FLEET}
 
 AIRPORTS = json.loads((ROOT_DIR / "airports.json").read_text(encoding="utf-8"))
@@ -246,6 +259,9 @@ class Quote(BaseDocument):
     final_price_usd: Optional[float] = None
     team_message: Optional[str] = None
     email_status: Optional[str] = None
+    payment_status: Optional[str] = None
+    stripe_session_id: Optional[str] = None
+    paid_at: Optional[str] = None
     manifest_reminder_sent_at: Optional[str] = None
     guests: list[dict] = []
     created_at: str
@@ -270,10 +286,6 @@ class User(BaseModel):
     name: str = ""
     picture: Optional[str] = None
     is_admin: bool = False
-
-
-class SessionIn(BaseModel):
-    session_id: str = Field(min_length=1)
 
 
 class ClaimIn(BaseModel):
@@ -315,24 +327,24 @@ def _user_out(doc: dict) -> User:
     )
 
 
+def _make_token(user_id: str) -> str:
+    now = datetime.now(timezone.utc)
+    claims = {"sub": user_id, "iat": now, "exp": now + timedelta(days=JWT_TTL_DAYS), "iss": "sidra-api", "aud": "sidra-app"}
+    return jwt.encode(claims, JWT_SECRET, algorithm="HS256")
+
+
 async def current_user(request: Request) -> User:
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
         raise HTTPException(401, "Not authenticated")
-    token = auth[7:].strip()
-    sess = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
-    if not sess:
-        raise HTTPException(401, "Session not found")
-    exp = sess["expires_at"]
-    if isinstance(exp, str):
-        exp = datetime.fromisoformat(exp)
-    if exp.tzinfo is None:
-        exp = exp.replace(tzinfo=timezone.utc)
-    if exp < datetime.now(timezone.utc):
-        raise HTTPException(401, "Session expired")
-    doc = await db.users.find_one({"user_id": sess["user_id"]}, {"_id": 0})
+    try:
+        claims = jwt.decode(auth[7:].strip(), JWT_SECRET, algorithms=["HS256"], issuer="sidra-api", audience="sidra-app",
+                            options={"require": ["sub", "exp", "iat", "iss", "aud"]})
+    except jwt.PyJWTError:
+        raise HTTPException(401, "Session expired. Please sign in again.")
+    doc = await db.users.find_one({"user_id": claims["sub"]}, {"_id": 0})
     if not doc:
-        raise HTTPException(401, "User not found")
+        raise HTTPException(401, "Account not found")
     return _user_out(doc)
 
 
@@ -342,42 +354,67 @@ async def admin_user(user: User = Depends(current_user)) -> User:
     return user
 
 
-@api.post("/auth/session")
-async def auth_session(body: SessionIn):
-    async with httpx.AsyncClient(timeout=15) as http:
-        r = await http.get(EMERGENT_SESSION_URL, headers={"X-Session-ID": body.session_id})
-    if r.status_code != 200:
-        raise HTTPException(401, "Invalid session")
-    data = r.json()
-    email = data["email"].lower()
-    existing = await db.users.find_one({"email": email}, {"_id": 0})
-    if existing:
-        user_id = existing["user_id"]
-        await db.users.update_one({"user_id": user_id}, {"$set": {"name": data.get("name", ""), "picture": data.get("picture")}})
-    else:
-        user_id = f"user_{uuid.uuid4().hex[:12]}"
-        await db.users.insert_one({"user_id": user_id, "email": email, "name": data.get("name", ""), "picture": data.get("picture"), "created_at": datetime.now(timezone.utc)})
-    token = data["session_token"]
-    now = datetime.now(timezone.utc)
-    await db.user_sessions.update_one(
-        {"session_token": token},
-        {"$set": {"session_token": token, "user_id": user_id, "expires_at": now + timedelta(days=7), "created_at": now}},
-        upsert=True,
+class CodeIn(BaseModel):
+    invite_code: str = Field(min_length=1, max_length=32)
+
+
+class RegisterIn(CodeIn):
+    name: str = Field(min_length=1, max_length=120)
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=72)
+
+
+class LoginIn(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=72)
+
+
+def _code_ok(code: str) -> bool:
+    return hmac.compare_digest(code.strip(), INVITE_CODE)
+
+
+def _auth_response(doc: dict) -> dict:
+    return {"access_token": _make_token(doc["user_id"]), "user": _user_out(doc).model_dump()}
+
+
+@api.post("/auth/verify-code")
+async def verify_code(body: CodeIn):
+    if not _code_ok(body.invite_code):
+        raise HTTPException(400, "That access code is not recognised")
+    return {"ok": True}
+
+
+@api.post("/auth/register", status_code=201)
+async def register(body: RegisterIn):
+    if not _code_ok(body.invite_code):
+        raise HTTPException(400, "That access code is not recognised")
+    email = body.email.lower().strip()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(409, "An account with this email already exists. Please sign in.")
+    pw_hash = await asyncio.to_thread(lambda: bcrypt.hashpw(body.password.encode(), bcrypt.gensalt(rounds=12)).decode())
+    doc = {"user_id": f"user_{uuid.uuid4().hex[:12]}", "email": email, "name": body.name.strip(), "picture": None,
+           "password_hash": pw_hash, "created_at": datetime.now(timezone.utc)}
+    try:
+        await db.users.insert_one(doc)
+    except DuplicateKeyError:
+        raise HTTPException(409, "An account with this email already exists. Please sign in.")
+    return _auth_response(doc)
+
+
+@api.post("/auth/login")
+async def login(body: LoginIn):
+    doc = await db.users.find_one({"email": body.email.lower().strip()}, {"_id": 0})
+    ok = bool(doc and doc.get("password_hash")) and await asyncio.to_thread(
+        lambda: bcrypt.checkpw(body.password.encode(), doc["password_hash"].encode())
     )
-    doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    return {"session_token": token, "user": _user_out(doc).model_dump()}
+    if not ok:
+        raise HTTPException(401, "Incorrect email or password")
+    return _auth_response(doc)
 
 
 @api.get("/auth/me")
 async def auth_me(user: User = Depends(current_user)):
     return user.model_dump()
-
-
-@api.post("/auth/logout")
-async def auth_logout(request: Request, user: User = Depends(current_user)):
-    token = request.headers.get("Authorization", "")[7:].strip()
-    await db.user_sessions.delete_one({"session_token": token})
-    return {"ok": True}
 
 
 @api.post("/me/claim")
@@ -404,6 +441,29 @@ async def get_jet(jet_id: str):
 @api.get("/airports")
 async def get_airports():
     return AIRPORTS
+
+
+POPULAR_ROUTES = [("FAB", "NCE"), ("MAN", "IBZ"), ("LTN", "GVA"), ("LAS", "VNY"), ("DXB", "LBG"), ("LIN", "OLB"), ("TEB", "PBI"), ("LPL", "PMI")]
+
+
+@api.get("/routes/popular")
+async def popular_routes():
+    """Featured routes with the most economical nonstop aircraft and its estimate."""
+    out = []
+    for a, b in POPULAR_ROUTES:
+        best = None
+        for j in FLEET:
+            e = estimate(a, b, j["id"], "one_way")
+            if e["fuel_stops"] == 0 and (best is None or e["estimated_price_usd"] < best[1]["estimated_price_usd"]):
+                best = (j, e)
+        j, e = best
+        out.append({
+            "from_code": a, "to_code": b,
+            "from_city": AIRPORTS_BY_CODE[a]["city"], "to_city": AIRPORTS_BY_CODE[b]["city"],
+            "jet_id": j["id"], "jet_name": j["name"],
+            "flight_minutes": e["flight_minutes"], "estimated_price_usd": e["estimated_price_usd"],
+        })
+    return out
 
 
 @api.post("/quotes/estimate")
@@ -472,6 +532,85 @@ async def cancel_quote(quote_id: str, user: User = Depends(current_user)):
     if not doc:
         raise HTTPException(404, "Trip not found")
     return Quote.from_mongo(doc).public()
+
+
+# ---------------------------------------------------------------- Payments (Stripe Checkout: card + Apple Pay)
+class CheckoutIn(BaseModel):
+    quote_id: str
+
+
+def _stripe_ready():
+    if not STRIPE_API_KEY:
+        raise HTTPException(503, "Payments are not yet enabled")
+    stripe.api_key = STRIPE_API_KEY
+
+
+async def _mark_paid_if_complete(doc: dict) -> dict:
+    sid = doc.get("stripe_session_id")
+    if not sid or doc.get("payment_status") == "paid":
+        return doc
+    _stripe_ready()
+    s = await asyncio.to_thread(stripe.checkout.Session.retrieve, sid)
+    expected = int(round((doc.get("final_price_usd") or 0) * 100))
+    if s.payment_status == "paid" and s.amount_total == expected and (s.metadata or {}).get("quote_id") == str(doc["_id"]):
+        doc = await db.quotes.find_one_and_update(
+            {"_id": doc["_id"]}, {"$set": {"payment_status": "paid", "paid_at": now_iso()}}, return_document=True
+        )
+    return doc
+
+
+async def _create_session(**kwargs):
+    return await asyncio.to_thread(stripe.checkout.Session.create, **kwargs)
+
+
+@api.post("/payments/checkout")
+async def create_checkout(body: CheckoutIn, request: Request, user: User = Depends(current_user)):
+    doc = await db.quotes.find_one({"_id": _oid(body.quote_id), "user_id": user.user_id})
+    if not doc:
+        raise HTTPException(404, "Trip not found")
+    if doc.get("status") != "Confirmed" or not doc.get("final_price_usd"):
+        raise HTTPException(409, "Payment opens once the SIDRA team confirms your charter")
+    if doc.get("payment_status") == "paid":
+        raise HTTPException(409, "This charter has already been paid")
+    _stripe_ready()
+    base = f"{request.headers.get('x-forwarded-proto', request.url.scheme)}://{request.headers.get('x-forwarded-host', request.url.netloc)}"
+    amount = int(round(doc["final_price_usd"] * 100))
+    try:
+        session = await _create_session(
+        mode="payment",
+        line_items=[{"price_data": {"currency": "usd", "unit_amount": amount,
+                                    "product_data": {"name": f"SIDRA charter {doc['from_code']} to {doc['to_code']}",
+                                                     "description": f"{doc['jet_name']} departing {doc['depart_date']}"}},
+                     "quantity": 1}],
+        customer_email=doc["email"],
+        success_url=f"{base}/api/payments/return?status=success",
+        cancel_url=f"{base}/api/payments/return?status=cancelled",
+        metadata={"quote_id": str(doc["_id"]), "user_id": user.user_id},
+            payment_intent_data={"metadata": {"quote_id": str(doc["_id"])}},
+        )
+    except stripe.StripeError as exc:
+        logger.error("stripe checkout failed: %s", exc)
+        raise HTTPException(503, "Payments are temporarily unavailable. Please try again shortly.")
+    await db.quotes.update_one({"_id": doc["_id"]}, {"$set": {"stripe_session_id": session.id, "payment_status": "pending"}})
+    return {"checkout_url": session.url}
+
+
+@api.post("/payments/refresh/{quote_id}")
+async def refresh_payment(quote_id: str, user: User = Depends(current_user)):
+    doc = await db.quotes.find_one({"_id": _oid(quote_id), "user_id": user.user_id})
+    if not doc:
+        raise HTTPException(404, "Trip not found")
+    return Quote.from_mongo(await _mark_paid_if_complete(doc)).public()
+
+
+@api.get("/payments/return", include_in_schema=False)
+async def payment_return(status: str = "success"):
+    from fastapi.responses import HTMLResponse
+    msg = "Payment received. Thank you." if status == "success" else "Payment was not completed."
+    return HTMLResponse(f"""<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SIDRA</title></head><body style="margin:0;font-family:Helvetica,Arial,sans-serif;background:#111;color:#fff;display:flex;
+align-items:center;justify-content:center;height:100vh;text-align:center"><div><div style="letter-spacing:8px;color:#A7A9AC">SIDRA</div>
+<h2 style="font-weight:600">{msg}</h2><p style="color:#A7A9AC">You may close this window and return to the SIDRA app.</p></div></body></html>""")
 
 
 # ---------------------------------------------------------------- Team dashboard
@@ -563,15 +702,15 @@ async def save_guests(quote_id: str, body: GuestsIn, user: User = Depends(curren
 FLEET_SUMMARY = "\n".join(
     f"- {j['name']} ({j['maker']}): up to {j['pax']} pax, {j['range_nm']} nm range, from ${j['hourly_usd']:,}/hr" for j in FLEET
 )
-SYSTEM_PROMPT = f"""You are the SIDRA Concierge, the private aviation concierge for SIDRA, an ad-hoc luxury jet charter service.
-Members charter Bombardier Global, Bombardier Challenger and Gulfstream aircraft.
+SYSTEM_PROMPT = f"""You are the SIDRA Concierge for SIDRA, an invitation only private jet charter service for corporate clients and executives.
+Members charter Bombardier Global, Bombardier Challenger, Gulfstream and Boeing Business Jet (BBJ) aircraft.
 
 Fleet:
 {FLEET_SUMMARY}
 
 You help with: choosing the right aircraft for a route and party size, in-flight catering, chauffeurs and ground transport,
 hotels and villas, travelling with pets, special occasions, visas and documents guidance, FBO and lounge info.
-Tone: warm, discreet, refined, concise. Use short paragraphs or simple hyphen lists. Plain text only: no markdown bold, headings or emojis. Prices in USD.
+Tone: professional, discreet, courteous and concise, suited to executives and executive assistants. Never use hyphens or dashes in your replies. Use short paragraphs or simple hyphen lists. Plain text only: no markdown bold, headings or emojis. Prices in USD.
 You cannot confirm bookings or take payments yourself; for a charter, guide members to the Charter tab to send a quote request,
 and say the SIDRA flight team will confirm availability. For service requests (catering, cars, hotels), acknowledge, gather key details,
 and confirm the team will arrange it and follow up."""

@@ -2,6 +2,7 @@ import Feather from "@react-native-vector-icons/feather";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import { useState } from "react";
 import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -29,6 +30,35 @@ export default function TripDetail() {
     queryKey: ["quote", id],
     queryFn: () => api<Quote>(`/quotes/${id}`),
   });
+
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
+
+  const refreshPayment = async () => {
+    try {
+      qc.setQueryData(["quote", id], await api<Quote>(`/payments/refresh/${id}`, { method: "POST" }));
+      qc.invalidateQueries({ queryKey: ["quotes"] });
+    } catch (e) {
+      setPayError((e as Error).message);
+    }
+  };
+
+  const pay = async () => {
+    setPayError(null);
+    setPaying(true);
+    try {
+      const { checkout_url } = await api<{ checkout_url: string }>("/payments/checkout", {
+        method: "POST",
+        body: JSON.stringify({ quote_id: id }),
+      });
+      await WebBrowser.openBrowserAsync(checkout_url);
+      await refreshPayment();
+    } catch (e) {
+      setPayError((e as Error).message);
+    } finally {
+      setPaying(false);
+    }
+  };
 
   const cancel = useMutation({
     mutationFn: () => api<Quote>(`/quotes/${id}/cancel`, { method: "POST" }),
@@ -147,6 +177,32 @@ export default function TripDetail() {
           </View>
 
           <View style={styles.actions}>
+            {q.status === "Confirmed" && q.final_price_usd ? (
+              q.payment_status === "paid" ? (
+                <View style={styles.paidBox} testID="trip-paid-banner">
+                  <Feather name="check-circle" size={18} color={colors.success} />
+                  <Text style={styles.paidText}>Paid in full · {usd(q.final_price_usd)}</Text>
+                </View>
+              ) : (
+                <View style={{ gap: 8, marginBottom: 12 }}>
+                  <Pressable style={[styles.payBtn, paying && { opacity: 0.7 }]} disabled={paying} onPress={pay} testID="trip-pay-button">
+                    {paying ? <ActivityIndicator color={colors.onBrandPrimary} /> : (
+                      <>
+                        <Feather name="credit-card" size={16} color={colors.onBrandPrimary} />
+                        <Text style={styles.primaryText}>Pay {usd(q.final_price_usd)} by card or Apple Pay</Text>
+                      </>
+                    )}
+                  </Pressable>
+                  {q.payment_status === "pending" && (
+                    <Pressable onPress={refreshPayment} style={styles.refresh} testID="trip-refresh-payment-button">
+                      <Text style={styles.refreshText}>Already paid? Refresh payment status</Text>
+                    </Pressable>
+                  )}
+                  {payError ? <Text style={styles.payError} testID="trip-pay-error">{payError}</Text> : null}
+                  <Text style={styles.payNote}>Secure checkout by Stripe. Apple Pay appears on supported devices.</Text>
+                </View>
+              )
+            ) : null}
             {q.status !== "Cancelled" && (
               <Pressable style={styles.primary} onPress={() => setSharing(true)} testID="trip-share-itinerary-button">
                 <Feather name="share" size={16} color={colors.onBrandPrimary} />
@@ -225,6 +281,13 @@ const useStyles = makeStyles((c) => ({
   manifestSub: { fontFamily: fonts.text, fontSize: 12, color: c.muted, marginTop: 2 },
   leadCard: { marginHorizontal: 24, marginTop: 24, padding: 16, borderWidth: 1, borderColor: c.border, borderRadius: 4, gap: 2 },
   leadName: { fontFamily: fonts.display, fontSize: 20, color: c.onSurface, marginBottom: 4 },
+  payBtn: { height: 56, borderRadius: 8, backgroundColor: c.brandPrimary, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center" },
+  paidBox: { flexDirection: "row", alignItems: "center", gap: 10, padding: 16, borderRadius: 8, backgroundColor: c.brandTertiary, marginBottom: 12 },
+  paidText: { fontFamily: fonts.display, fontSize: 15, color: c.onSurface },
+  refresh: { minHeight: 44, alignItems: "center", justifyContent: "center" },
+  refreshText: { fontFamily: fonts.text, fontSize: 13, color: c.onSurface, textDecorationLine: "underline" },
+  payError: { fontFamily: fonts.text, fontSize: 13, color: c.error, textAlign: "center" },
+  payNote: { fontFamily: fonts.text, fontSize: 12, color: c.muted, textAlign: "center" },
   teamNote: { marginHorizontal: 24, marginTop: 24, padding: 16, backgroundColor: c.brandTertiary, borderRadius: 4 },
   secondaryText: { fontFamily: fonts.text, fontSize: 15, color: c.onSurface },
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" },

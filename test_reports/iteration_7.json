@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration-7 scope verified end-to-end. BACKEND 21 passed / 1 skipped (/app/backend/tests/test_sidra_iter7_auth_payments.py): POST /api/auth/verify-code -> 200 for 2893159, 400 'not recognised' for wrong code, 422 for empty; POST /api/auth/register -> 201 {access_token,user}, rejects wrong code (400), short password (422), duplicate email (409); POST /api/auth/login -> 200 for member & team (is_admin=true for team.test), 401 for wrong password/unknown email; GET /api/auth/me 200 with Bearer, 401 without/with garbage JWT; GET /api/quotes 401 without auth; admin endpoints: /api/admin/quotes and /api/admin/stats 403 for member and 200 for team.test (stats has all four buckets); POST /api/payments/checkout 401 unauthenticated, 404 for unknown/invalid quote_id, 502 'Payments are temporarily unavailable' for member's Confirmed quote (expected: saved key is a Stripe publishable key, flagged as known/not a code bug); POST /api/payments/refresh/{id} 200 and returns the quote. Cross-user isolation test skipped (no cross-user quote candidate at run time). FRONTEND (mobile 390x844, Expo web): login-screen loads; wrong access code -> login-error 'That access code is not recognised'; code 2893159 reveals register step (register-name-input, auth-email-input, auth-password-input, access-submit-button); go-sign-in-link hides name field, go-access-code-link returns to code step; signing in with member.test@sidra.example / SidraTest2026 lands on book-screen; BY REFERRAL ONLY badge and corporate copy visible; concierge greeting 'How may we assist?' present. book-swap-button BUG FROM ITER-6 IS FIXED: tapping book-swap-button swaps From/To (verified: Lyon(LYS) in FROM moved to TO after tap) and does NOT open the AirportPicker (picker_open=False after tap). Trip detail for a Confirmed quote ($41,500) shows trip-pay-button with text containing 'Pay $41,500 by card or Apple Pay'; tapping it surfaces trip-pay-error 'Request failed (502)' as expected until a Stripe secret key is set. Sign out from open-profile-button -> sign-out-button returns user to login-screen. Font family resolves to 'ManropeSemiBold' on access-title. One backend test (cross-user isolation) skipped because team account did not have a quote belonging to a different user in /api/admin/quotes at run time -- not a defect. No new quotes were created in this iteration (budget preserved; member already had 7 quotes incl. 3 Confirmed).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/payments/checkout", "issue": "Returns 502 'Payments are temporarily unavailable' for all Confirmed quotes because STRIPE_API_KEY currently stored is a Stripe publishable key (pk_...) not a secret key (sk_...). Expected per review-request context; not a code bug. Replacing with sk_test_* or sk_live_* will unblock Checkout session creation."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_sidra_iter7_auth_payments.py",
+    "/app/test_reports/pytest/sidra_iter7.xml"
+  ],
+  "action_items": [
+    "Replace STRIPE_API_KEY in /app/backend/.env with a Stripe SECRET key (sk_test_... or sk_live_...). Current value is a publishable key (pk_...) which cannot create Checkout Sessions, hence the 502 on /api/payments/checkout and the trip-pay-error 'Request failed (502)' on the trip screen. After swap, retest tapping trip-pay-button on a Confirmed quote -> should redirect to Stripe hosted Checkout (card + Apple Pay)."
+  ],
+  "critical_code_review_comments": [
+    "server.py _mark_paid_if_complete validates s.metadata.quote_id against str(doc['_id']); make sure Stripe session creation at line ~588 passes str(doc['_id']) (it does). Good.",
+    "server.py /api/payments/checkout returns 502 for any StripeError including auth errors. Consider distinguishing stripe.error.AuthenticationError into a 500 with a clearer server-side log so ops can see a key-misconfiguration vs. transient Stripe outage. Minor.",
+    "server.py JWT TTL is 30 days without refresh/rotation. Fine for this app class but consider revocation (e.g. keep a user.token_version claim) if an account is ever compromised.",
+    "login.tsx access-code-input uses keyboardType='number-pad' which is correct for the 7-digit code; good. Consider adding a maxLength={7} for additional guard-rail.",
+    "trip/[id].tsx trip-pay-button uses only a dollar sign + final_price_usd without currency formatting of thousands beyond toLocaleString; verified it does render '$41,500' correctly in browser. OK.",
+    "server.py _code_ok uses hmac.compare_digest -- good constant-time comparison."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (21/21, 1 skipped by design)", "frontend": "100% on tested flows"},
+  "seed_data_creation": "Registration test created transient qa+<uuid>@sidra.example accounts (prefixed TEST_QA) via /api/auth/register. These are harmless test users. No existing data modified; no new quotes created (team-inbox budget preserved).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run: EXPO_PUBLIC_BACKEND_URL=https://sidra-air--2uijgch0.preview.emergentagent.com python -m pytest /app/backend/tests/test_sidra_iter7_auth_payments.py -v -o addopts=''. Known: /api/payments/checkout returns 502 until a Stripe SECRET key is set (not a code bug). book-swap-button fix in /app/frontend/app/(tabs)/index.tsx (position:'absolute', inside routeCard after both rows) works on web; verified tap swaps From/To and does not open AirportPicker. Member has 7 quotes (3 Confirmed, final prices incl. $41,500); team.test is admin. INVITE_CODE=2893159. If adding more tests, do not create more quotes (emails hit the real team inbox -- use delivered@resend.dev if absolutely necessary, at most 1).",
+  "rca_of_issue": "N/A -- iter-6 swap bug is fixed. The 502 on /api/payments/checkout is a configuration issue (publishable key stored where a secret key is required), not a code defect; server correctly surfaces a user-friendly error and the frontend correctly renders trip-pay-error."
+}

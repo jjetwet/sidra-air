@@ -1,0 +1,49 @@
+{
+  "summary": "Iteration-6 scope verified. Backend 6/6 pytest pass (/app/backend/tests/test_sidra_book_fleet_iter6.py): GET /api/fleet returns 10 jets including Boeing Business Jet (bbj, maker=Boeing, family=Boeing, pax=19); GET /api/fleet/bbj returns the jet; GET /api/fleet/unknown -> 404; GET /api/routes/popular returns 8 items with full schema (from_code/to_code/from_city/to_city/jet_id/jet_name/flight_minutes/estimated_price_usd); FAB->NCE present with a valid jet_id that resolves in /api/fleet; cheapest-nonstop pick for FAB->NCE matches /api/quotes/estimate exactly (fuel_stops=0). Frontend (mobile 390x844, seeded member session): Book tab trip toggle One-way <-> Return works; pax stepper book-pax-minus/plus updates book-pax-value correctly (clamps at 1..19); book-from-button/book-to-button open AirportPicker and persist selection; book-date-button opens book-date-sheet with DateStrip chips (book-depart-date-YYYY-MM-DD) and book-date-done-button closes; book-search-button without route shows book-hint, with route navigates to /charter prefilled (charter-from-code=FAB, charter-to-code=NCE, charter-pax-value=3); book-hero-fleet/concierge/bbj buttons navigate to Fleet, Concierge and /jet/bbj respectively; BBJ detail renders (illustration, 7000 nm range, 19 guests, $22,000/hr); charter-this-jet-button from BBJ detail opens charter with BBJ preselected and charter-back-button returns; book-explore-fleet-button -> fleet-screen; book-ask-concierge-link -> concierge-screen; popular-route-FAB-NCE navigates to charter with FAB->NCE prefilled and Gulfstream G280 preselected (estimate $13,600 matches backend). Fleet tab search: 'boeing'->1 card (BBJ), 'G700'->1 card (g700), '18'->4 cards (jets with pax>=18 incl BBJ), unknown string shows fleet-empty, fleet-search-clear restores 10 cards, fleet-filter-boeing chip isolates BBJ. CRITICAL UI BUG: book-swap-button is non-functional - clicking it opens the 'To' airport picker instead of swapping From/To. Root cause: the swap Pressable (40x40) is nested in styles.divider which is only 1px tall, so the swap's overflow falls into the book-to-button Pressable region and RN-Web captures the touch on the parent row before the overflowing child. Did not create any new quotes in this iteration (budget preserved, no team-inbox emails).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "book-swap-button",
+        "issue": "Tapping book-swap-button does NOT swap From/To; it opens the 'Flying to' AirportPicker. The 40x40 swap Pressable is nested inside styles.divider (height:1), so overflow falls into the book-to-button Pressable below and captures the tap. Reproduced with both testID click and bounding-box center-click. Reference: /app/frontend/app/(tabs)/index.tsx around the <View style={styles.divider}><Pressable style={styles.swap} testID=\"book-swap-button\"/></View> block and styles.divider at height:1.",
+        "testID": "book-swap-button",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Book (index.tsx)",
+        "issues": [
+          "styles.divider height:1 with a 40x40 child button is a layout smell - prefer a container row with explicit height (e.g. 40 or 44) that properly bounds the swap Pressable, or absolutely position the swap over a visible border. Current pattern causes overlapping hit regions and makes book-swap-button unreachable via centered tap."
+        ]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_sidra_book_fleet_iter6.py",
+    "/app/test_reports/pytest/sidra_iter6.xml"
+  ],
+  "action_items": [
+    "Fix book-swap-button hit region in /app/frontend/app/(tabs)/index.tsx. Suggested: wrap From row + swap + To row in a parent View of height 72+72+(gap) and absolutely position the swap button over the divider (e.g. style={{position:'absolute', right:16, top: rowHeight-20, zIndex:2, elevation:2}}), OR increase styles.divider to height:40 with alignItems:'flex-end' and ensure the row Pressables don't pointer-event the overflowing child (use pointerEvents='box-none' on a bounding wrapper). After fix, verify: (a) testID click on book-swap-button triggers swap, (b) no airport picker opens on swap tap, (c) From/To values are exchanged."
+  ],
+  "critical_code_review_comments": [
+    "app/(tabs)/index.tsx line ~293 styles.divider uses height:1 as a layout container for a 40x40 swap button. Child overflow outside a Pressable parent is unreliable on web (and on RN Android) - taps on the overflowing portion hit the sibling Pressables (book-from-button above and book-to-button below). The XO-style UX works only because the swap visually overlaps the thin border; functionally the hit region is broken on web.",
+    "app/(tabs)/index.tsx search() always falls back to depart=isoDate(DAYS[6]) when user hasn't picked a date; good. However book-date-value shows 'Date' placeholder until a date is picked, so a user who taps Search without opening the date sheet gets a quote dated 6 days out silently. Consider showing the implicit default in book-date-value (e.g. 'Date · today+6') for transparency.",
+    "backend /api/routes/popular (server.py:417) iterates FLEET and picks the cheapest nonstop jet; works but if a route has no nonstop option across the whole fleet, 'best' stays None and the unpacking at line 427 raises. All 8 configured routes currently have a nonstop option so it's fine today, but add a defensive check or fallback jet for future route additions.",
+    "app/(tabs)/fleet.tsx numeric search 'if Number(s) > 0 && j.pax >= Number(s)' coexists with text search via OR; a search like '7' would match both text (G700 contains '7') and pax>=7, which is intentional and fine. No issue, just worth a comment."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_sidra_book_fleet_iter6.py (new, 6 pytest cases - all pass)"
+  ],
+  "success_rate": {
+    "backend": "100% (6/6)",
+    "frontend": "~92% (1 critical UI bug: book-swap-button broken; all other flows verified)"
+  },
+  "seed_data_creation": "None. No new quotes were created in this iteration (stayed within the 'at most 1 new quote' budget by not exercising request-quote flow; iteration-5 already confirmed that path end-to-end with lead_passenger). No seed data modified.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run iter-6 backend tests: EXPO_PUBLIC_BACKEND_URL=https://sidra-air--2uijgch0.preview.emergentagent.com python -m pytest /app/backend/tests/test_sidra_book_fleet_iter6.py -v -o addopts=''. The only outstanding defect is the book-swap-button hit-region issue in /app/frontend/app/(tabs)/index.tsx. After main agent fixes it, retest: open Book, pick From=DXB and To=DOH, click book-swap-button (both testID click and center bounding-box click), verify From=Doha and To=Dubai and that no AirportPicker modal opens. All other iter-6 scope items (fleet with BBJ, fleet search filters incl pax-number search, book tab navigation, popular-route-FAB-NCE prefill with G280, charter-back navigation, hero carousel buttons) are working.",
+  "rca_of_issue": "book-swap-button overlay bug: The swap Pressable (styles.swap: 40x40) is nested inside styles.divider (height:1), which sits between two full-width Pressables (book-from-button, book-to-button). On RN-Web the layout engine lets the 40x40 child overflow its 1px-tall parent visually, but hit-testing on web uses CSS stacking/DOM order: the sibling Pressables (book-to-button, rendered after the divider) lie underneath the swap button's overflowing bottom half in DOM order, and because the divider is only 1px tall its event region is tiny. Playwright's testID-targeted click resolves to the swap element but the click lands at the element's visual center, which on web dispatches a click event that bubbles - and because the swap button doesn't call stopPropagation / preventDefault and the row Pressable below also has a pointer handler covering the same visual region, the row's onPress fires. Repro: see the browser_automation output showing 'After testID-click: from=Dubai (DXB), to=Doha (DOH), picker-open=True, SWAP WORKED: False'. Mitigation: either absolutely position swap on top with zIndex and set the row's pointerEvents behavior, or expand the divider's height to properly contain the swap Pressable and let the row Pressables be adjacent rather than overlapping."
+}

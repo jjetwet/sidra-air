@@ -244,6 +244,6 @@ def flight_confirmed(q: dict, airports: dict) -> tuple[str, str]:
         q,
         airports,
         [("Final price", f"{usd(q['final_price_usd'])} USD")],
-        note + "You can share the itinerary with your guests from the trip in the SIDRA app.",
+        note + "To settle your charter, open the trip in the SIDRA app and pay securely by card or Apple Pay. You can also share the itinerary with your passengers from the same screen.",
     )
     return subject, html

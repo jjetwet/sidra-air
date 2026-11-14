@@ -8,6 +8,7 @@ export const JET_IMAGES: Record<string, number> = {
   g650er: require("../assets/images/jets/g650er.png"),
   g500: require("../assets/images/jets/g500.png"),
   g280: require("../assets/images/jets/g280.png"),
+  bbj: require("../assets/images/jets/bbj.png"),
 };
 
 export const MARK_SILVER = require("../assets/images/sidra-mark.png");

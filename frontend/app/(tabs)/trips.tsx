@@ -21,7 +21,7 @@ export default function TripsScreen() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 16 }]} testID="trips-screen">
-      <BrandHeader title="Trips" subtitle="Your quote requests and journeys" />
+      <BrandHeader title="Trips" subtitle="Charter requests and confirmed flights" />
       {isLoading ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.onSurface} />
@@ -43,8 +43,8 @@ export default function TripsScreen() {
           ListEmptyComponent={
             <View style={styles.center} testID="trips-empty">
               <Feather name="navigation-2" size={28} color={colors.brandSecondary} />
-              <Text style={styles.emptyTitle}>No upcoming journeys</Text>
-              <Text style={styles.muted}>Request a quote and it will appear here.</Text>
+              <Text style={styles.emptyTitle}>No charters yet</Text>
+              <Text style={styles.muted}>Your charter requests and confirmed flights will appear here.</Text>
               <Pressable onPress={() => router.navigate("/charter")} style={styles.btn} testID="trips-start-charter-button">
                 <Text style={styles.btnText}>Plan a charter</Text>
               </Pressable>

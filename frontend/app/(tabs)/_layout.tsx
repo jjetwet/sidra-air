@@ -14,11 +14,11 @@ export default function TabsLayout() {
       <NativeTabs tintColor={colors.onSurface}>
         <NativeTabs.Trigger name="index">
           <NativeTabs.Trigger.Icon sf="airplane" />
-          <NativeTabs.Trigger.Label>Fleet</NativeTabs.Trigger.Label>
+          <NativeTabs.Trigger.Label>Book</NativeTabs.Trigger.Label>
         </NativeTabs.Trigger>
-        <NativeTabs.Trigger name="charter">
-          <NativeTabs.Trigger.Icon sf="map" />
-          <NativeTabs.Trigger.Label>Charter</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger name="fleet">
+          <NativeTabs.Trigger.Icon sf="magnifyingglass" />
+          <NativeTabs.Trigger.Label>Fleet</NativeTabs.Trigger.Label>
         </NativeTabs.Trigger>
         <NativeTabs.Trigger name="trips">
           <NativeTabs.Trigger.Icon sf="suitcase" />
@@ -32,7 +32,7 @@ export default function TabsLayout() {
     );
   }
 
-  const icon = (name: "navigation-2" | "map" | "briefcase" | "message-circle") =>
+  const icon = (name: "navigation-2" | "search" | "briefcase" | "message-circle") =>
     function TabIcon({ color }: { color: string }) {
       return <Feather name={name} size={20} color={color} />;
     };
@@ -53,8 +53,8 @@ export default function TabsLayout() {
         tabBarLabelStyle: { fontFamily: fonts.text, fontSize: 11, letterSpacing: 0.5 },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: "Fleet", tabBarIcon: icon("navigation-2"), tabBarButtonTestID: "tab-fleet" }} />
-      <Tabs.Screen name="charter" options={{ title: "Charter", tabBarIcon: icon("map"), tabBarButtonTestID: "tab-charter" }} />
+      <Tabs.Screen name="index" options={{ title: "Book", tabBarIcon: icon("navigation-2"), tabBarButtonTestID: "tab-book" }} />
+      <Tabs.Screen name="fleet" options={{ title: "Fleet", tabBarIcon: icon("search"), tabBarButtonTestID: "tab-fleet" }} />
       <Tabs.Screen name="trips" options={{ title: "Trips", tabBarIcon: icon("briefcase"), tabBarButtonTestID: "tab-trips" }} />
       <Tabs.Screen name="concierge" options={{ title: "Concierge", tabBarIcon: icon("message-circle"), tabBarButtonTestID: "tab-concierge" }} />
     </Tabs>

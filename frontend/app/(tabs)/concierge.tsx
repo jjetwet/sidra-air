@@ -14,11 +14,11 @@ import { usesNativeTabs } from "@/src/navigation";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 const SUGGESTIONS = [
-  "Arrange a chauffeur on arrival",
-  "Plan in-flight catering",
-  "Travelling with my dog",
-  "Which jet for 12 guests to London?",
-  "Book a hotel suite in Nice",
+  "Arrange ground transport on arrival",
+  "Plan catering for a working flight",
+  "Which aircraft suits a team of 12 to London?",
+  "Reserve hotel rooms for our delegation",
+  "Travelling with a pet",
 ];
 
 export default function ConciergeScreen() {
@@ -113,7 +113,7 @@ export default function ConciergeScreen() {
         <Text style={styles.heroTitle}>Concierge</Text>
         <View style={styles.liveRow}>
           <View style={styles.liveDot} />
-          <Text style={styles.heroSub}>At your service, 24/7</Text>
+          <Text style={styles.heroSub}>Available at any hour</Text>
         </View>
       </View>
 
@@ -133,8 +133,8 @@ export default function ConciergeScreen() {
             onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
             ListEmptyComponent={
               <View style={styles.empty} testID="concierge-empty">
-                <Text style={styles.emptyTitle}>Good day.</Text>
-                <Text style={styles.emptyBody}>Catering, chauffeurs, villas, pets or the perfect aircraft — tell us what you need.</Text>
+                <Text style={styles.emptyTitle}>How may we assist?</Text>
+                <Text style={styles.emptyBody}>Ground transport, catering, accommodation or aircraft selection. Tell us what your trip requires.</Text>
                 <ScrollView horizontal={false} contentContainerStyle={styles.sugList}>
                   {SUGGESTIONS.map((s, i) => (
                     <Pressable key={s} onPress={() => send(s)} style={styles.sug} testID={`concierge-suggestion-${i}`}>
