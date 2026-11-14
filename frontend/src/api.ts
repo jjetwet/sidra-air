@@ -58,6 +58,8 @@ export type Quote = Estimate & {
   team_message?: string | null;
   email_status?: string | null;
   payment_status?: string | null;
+  payment_method?: string | null;
+  payment_reference?: string | null;
   invoice_number?: string | null;
   company_id?: string | null;
   guests?: Guest[];

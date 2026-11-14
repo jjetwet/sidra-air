@@ -20,13 +20,16 @@ export default function GuestManifest() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const qc = useQueryClient();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, team } = useLocalSearchParams<{ id: string; team?: string }>();
+  const isTeam = team === "1";
+  const base = isTeam ? `/admin/quotes/${id}` : `/quotes/${id}`;
+  const key = isTeam ? ["admin-quote", id] : ["quote", id];
   const [guests, setGuests] = useState<Guest[]>([]);
   const [open, setOpen] = useState<number | null>(0);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  const { data: q, isLoading } = useQuery({ queryKey: ["quote", id], queryFn: () => api<Quote>(`/quotes/${id}`) });
+  const { data: q, isLoading } = useQuery({ queryKey: key, queryFn: () => api<Quote>(base) });
 
   useEffect(() => {
     if (!q) return;
@@ -36,14 +39,15 @@ export default function GuestManifest() {
 
   const save = useMutation({
     mutationFn: () =>
-      api<Quote>(`/quotes/${id}/guests`, {
+      api<Quote>(`${base}/guests`, {
         method: "PUT",
         body: JSON.stringify({ guests: guests.map((g) => ({ ...g, full_name: g.full_name.trim(), nationality: g.nationality.trim(), passport_number: g.passport_number.replace(/\s/g, "") })) }),
       }),
     onSuccess: (data) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      qc.setQueryData(["quote", id], data);
+      qc.setQueryData(key, data);
       qc.invalidateQueries({ queryKey: ["quotes"] });
+      qc.invalidateQueries({ queryKey: ["admin-quotes"] });
       qc.invalidateQueries({ queryKey: ["travellers"] });
       setSaved(true);
       setTimeout(() => router.back(), 900);
@@ -90,12 +94,14 @@ export default function GuestManifest() {
             <View style={styles.intro}>
               <Text style={styles.title}>{q.from_code} → {q.to_code}</Text>
               <Text style={styles.sub}>
-                Add each traveller exactly as shown on their passport. Shared only with the SIDRA flight team for border and handling requirements.
+                {isTeam
+                  ? `Editing the manifest for ${q.name}. Changes are visible to the member straight away.`
+                  : "Add each traveller exactly as shown on their passport. Shared only with the SIDRA flight team for border and handling requirements."}
               </Text>
               <Text style={styles.count} testID="manifest-count">{guests.length} of {q.pax} guests</Text>
             </View>
 
-            <TravellerPicker
+            {!isTeam && <TravellerPicker
               label="Add a saved traveller in one tap"
               selected={guests.map((g) => g.passport_number).filter(Boolean)}
               onPick={(t) => {
@@ -108,7 +114,7 @@ export default function GuestManifest() {
                 else if (guests.length < q.pax) setGuests((gs) => [...gs, entry]);
                 else setError(`This charter is for ${q.pax} passengers.`);
               }}
-            />
+            />}
 
             {guests.map((g, i) => {
               const expanded = open === i;

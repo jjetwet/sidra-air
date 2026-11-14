@@ -113,7 +113,7 @@ def build_invoice(q: dict, company: dict | None, airports: dict) -> bytes:
     y -= 6 * mm
     c.setFont("Helvetica", 9)
     c.setFillColor(MUTED)
-    c.drawString(w - m - 70 * mm, y, "Amount paid by card")
+    c.drawString(w - m - 70 * mm, y, f"Amount paid by {(q.get('payment_method') or 'card').lower()}")
     c.drawRightString(w - m, y, _usd(q["final_price_usd"]))
     y -= 5 * mm
     c.drawString(w - m - 70 * mm, y, "Balance due")

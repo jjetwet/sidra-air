@@ -63,3 +63,8 @@ Clean minimal jet illustrations (AI-generated, bundled) · AI concierge chat (Cl
 - Deployment health check: pass with warnings. Lint is clean.
 - Store review blockers: no in-app account deletion; no privacy policy link; no in-app AI disclosure for the concierge.
 - Warnings: no in-app support contact.
+
+## Admin trip editing (Jun 2026)
+- Admin joshua@flysidra.com. Team can edit route/aircraft/dates/time/pax (/team/edit/[id]) and the manifest (/trip/guests/[id]?team=1). They can also record an offline payment (mark-paid sends a receipt and invoice).
+- Changing route, aircraft or trip type on a confirmed, unpaid trip sends it back to Requested with no price.
+- Login screen scrolls only while the keyboard is open or the form overflows a small screen.

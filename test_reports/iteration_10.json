@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration-10 (admin trip editing + offline mark-paid). BACKEND 20/20 PASSED (/app/backend/tests/test_sidra_iter10_admin_edit.py): joshua@flysidra.com is_admin=true; member gets 403 on /details, /guests, /mark-paid; POST /api/admin/quotes/{id}/details updates route/jet/jet_name/trip_type/dates/window/pax and recalculates estimate, distance_nm etc. (matches /quotes/estimate); one_way clears return_date; validations: pax>seats ('seats up to 12'), return before depart, missing return date, same origin/dest, unknown jet -> 400, pax < manifest count -> 400, bad date format -> 422; PUT /api/admin/quotes/{id}/guests saves manifest (passport uppercased) visible to member, too many guests / passport expiry / future DOB -> 400; mark-paid on Requested -> 400, invalid method -> 422, Confirmed+final price -> paid with method, trimmed reference, invoice_number SID-YYYY-XXXXXX, second call -> 409; member GET shows paid, invoice-link PDF says 'Amount paid by bank transfer' and the final price; confirm endpoint after paid -> 400 (price locked) while details stay editable; cancelled trip -> 400 for details/guests/mark-paid; unknown id -> 404. FRONTEND (390x844): joshua login -> Profile shows 'SIDRA TEAM' badge -> Team dashboard opens; team/[id] shows Payment cell 'Unpaid', Edit trip + Edit manifest buttons and 'Paid outside the app?' section; /team/edit/[id] airport picker (search LBG) + aircraft G650ER + Return + date fields (auto-format) + Evening chip + pax stepper; invalid return date shows inline server error; valid save returns to request screen with DXB->LBG, G650ER, Evening, Jan 15, 5 guests; /trip/guests/[id]?team=1 calls PUT /api/admin/quotes/{id}/guests, shows admin intro, hides saved traveller picker, saves and returns; Mark as paid (Wire transfer + reference) shows 'Paid in full' block with invoice no., Payment cell 'Paid · Wire transfer · ref', offline section removed; member trip shows trip-paid-banner + invoice button, invoice PDF says 'wire transfer'. One business-logic gap: editing route/aircraft of an already Confirmed trip keeps the old final_price_usd (seen: estimate $182,600 vs final $57,100, then marked paid at $57,100). Deprecated packages: none detected in touched files.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/admin/quotes/{id}/details", "issue": "On a Confirmed (unpaid) trip, changing route/jet/trip_type keeps the old final_price_usd and Confirmed status. The member can then pay (Stripe or offline) the stale price. Reproduced: DXB->LTN Challenger 650 confirmed $57,100 -> edited to DXB->LBG G650ER return (estimate $182,600), final stayed $57,100."},
+      {"endpoint": "POST /api/admin/quotes/{id}/details", "issue": "Changing dates does not re-validate existing manifest passports against the new last travel day (_check_guests not re-run), and manifest_reminder_sent_at is not reset when depart_date moves."},
+      {"endpoint": "POST /api/admin/quotes/{id}/details", "issue": "No member notification/email when the team changes trip details (member only sees it in-app)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "team/[id] and team/edit/[id]", "issues": ["Pay-method / window / trip-type chips are 40px high (below 44px touch target)", "Edit screen error text renders at the bottom of the scroll content; visible here but could be off-screen on smaller devices", "No warning on Edit trip that final price is NOT recalculated for confirmed trips"]},
+      {"screen": "team/[id] manifest", "issues": ["Guest DOB / passport expiry shown via formatDate without year (e.g. 'Born Tue, Jan 1') - year is essential for DOB/passport expiry (pre-existing)"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_sidra_iter10_admin_edit.py", "/app/test_reports/pytest/sidra_iter10.xml"],
+  "action_items": [
+    "When admin edits route/jet/trip_type on a Confirmed unpaid trip, either reset status to Requested + clear final_price_usd, or require/offer a new final price (at minimum warn in the edit screen).",
+    "Optionally re-run _check_guests on details edit when dates change, and reset manifest_reminder_sent_at if depart_date changes.",
+    "Minor: bump chips to minHeight 44; show year for DOB/passport expiry in team manifest."
+  ],
+  "critical_code_review_comments": [
+    "admin_mark_paid uses an atomic find_one_and_update with payment_status $ne paid -> correct 409 on double submit.",
+    "admin_save_guests writes the guests into the trip owner's saved travellers (_save_travellers(doc.user_id)) - intended, but means admin edits mutate the member's address book.",
+    "_editable_doc correctly blocks cancelled trips for details/guests/mark-paid.",
+    "Email provider returned 429 rate limit during test bursts; endpoints degrade gracefully (email_status 'Receipt email failed')."
+  ],
+  "updated_files": ["/app/backend/tests/test_sidra_iter10_admin_edit.py"],
+  "success_rate": {"backend": "100% (20/20)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "Created TEST_ quotes via member.test (pytest + one UI quote 6af8cb3ff8025b300fc5c778) and deleted them by id from Mongo afterwards; TEST_UI travellers deleted by id. NOTE: the first pytest run's cleanup deleted member.test saved travellers whose full_name started with 'TEST_' (could include saved travellers from earlier iterations, e.g. TEST_IT8_*); cleanup now targets only this test's passport numbers. Quotes/guests from earlier iterations untouched. pypdf installed in venv for PDF text assertions (test-only). Test runs sent team alert/receipt emails to test inboxes.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: EXPO_PUBLIC_BACKEND_URL=https://sidra-air--2uijgch0.preview.emergentagent.com python -m pytest /app/backend/tests/test_sidra_iter10_admin_edit.py -v -o addopts=''. Requires pypdf. Airports list has no LHR/CDG (use LTN/LBG). Web login: go-sign-in-link -> auth-email-input/auth-password-input -> access-submit-button.",
+  "rca_of_issue": "Stale final price: admin_edit_details ($set of body fields + estimate) never touches status/final_price_usd, so a Confirmed price survives route/aircraft changes."
+}

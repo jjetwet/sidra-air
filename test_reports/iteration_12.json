@@ -1,0 +1,23 @@
+{
+  "summary": "Iteration-12 retest of the login screen only (frontend). The iter11 overflow bug is FIXED. At 375x667 the Create account step content is 780px in a 667px screen, overflowY is now 'auto', and a mouse wheel scrolls it to scrollTop=113. After scrolling, the full name, email and password inputs, the Create account button (y 531-587) and the 'Already a member? Sign in' link (y 599-643) are all fully visible. A real (non-force) click on the link takes you to 'Welcome back.', and the scroll position resets to 0. At 375x667 the code and sign-in steps fit (scrollHeight 667 = clientHeight), overflowY is hidden and the wheel does nothing. At 390x844 the code, create and sign-in steps all fit with overflowY hidden, and the wheel does nothing. Signing in as joshua@flysidra.com works at both 390x844 and 375x667: it lands on Book home (/) with no login-error. The native keyboard lift can't be checked on web. In code it is set up correctly: KeyboardAwareScrollView with bottomOffset 32, and scrollEnabled = keyboardOpen || overflow, where overflow is contentH > layoutH + 1 from onContentSizeChange/onLayout. Deprecated packages: none in login.tsx.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "login.tsx:28-32,81-83: overflow starts as false (0 > 1), so the screen does not flash as scrollable before the first layout. onContentSizeChange runs again when the step changes, so overflow is recalculated for each step. This was confirmed on web (create -> signin goes back to hidden).",
+    "On native, KeyboardAwareScrollView adds a bottom spacer while the keyboard is open, which raises contentH. When the keyboard closes the spacer is removed and overflow is recalculated, so there is no lasting side effect. Worth a quick check on a real iPhone SE with safe-area insets (top+48, bottom+24), since that adds about 60-80px more than the web."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (not requested)", "frontend": "100% (4/4 requested checks)"},
+  "seed_data_creation": "None. No accounts were created: Create account was never submitted. Joshua's account was only used to sign in.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Login testIDs: access-code-input, access-submit-button, register-name-input, auth-email-input, auth-password-input, go-sign-in-link, go-access-code-link, access-title, login-error. To check scroll, walk up from access-submit-button to the first ancestor with overflowY auto/hidden and compare scrollHeight with clientHeight, then use page.mouse.wheel.",
+  "rca_of_issue": "The iter11 bug (scrolling locked on an overflowing Create step) was fixed by adding the overflow condition to scrollEnabled. Verified fixed."
+}

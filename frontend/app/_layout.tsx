@@ -45,6 +45,7 @@ function Gate() {
             <Stack.Screen name="team/index" />
             <Stack.Screen name="team/[id]" />
             <Stack.Screen name="team/codes" />
+            <Stack.Screen name="team/edit/[id]" />
           </Stack.Protected>
         </Stack.Protected>
         <Stack.Protected guard={!user}>

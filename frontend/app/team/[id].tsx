@@ -13,6 +13,8 @@ import { StatusPill } from "@/src/components/StatusPill";
 import { useAirports } from "@/src/queries";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
+const PAY_METHODS = ["Bank transfer", "Wire transfer", "Cash", "Other"] as const;
+
 export default function TeamQuote() {
   const styles = useStyles();
   const { colors } = useTheme();
@@ -25,6 +27,8 @@ export default function TeamQuote() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
+  const [payMethod, setPayMethod] = useState<(typeof PAY_METHODS)[number]>("Bank transfer");
+  const [payRef, setPayRef] = useState("");
 
   const { data: q, isLoading } = useQuery({ queryKey: ["admin-quote", id], queryFn: () => api<Quote>(`/admin/quotes/${id}`) });
 
@@ -64,9 +68,25 @@ export default function TeamQuote() {
     },
   });
 
+  const markPaid = useMutation({
+    mutationFn: () => api<Quote>(`/admin/quotes/${id}/mark-paid`, { method: "POST", body: JSON.stringify({ method: payMethod, reference: payRef }) }),
+    onSuccess: (data) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      qc.setQueryData(["admin-quote", id], data);
+      qc.invalidateQueries({ queryKey: ["admin-quotes"] });
+      setSaved(data.email_status === "Receipt email sent" ? `Marked paid. Receipt and invoice emailed to ${data.email}.` : "Marked paid. The receipt email could not be sent.");
+      setError(null);
+    },
+    onError: (e: Error) => {
+      setError(e.message);
+      setSaved(null);
+    },
+  });
+
   const from = airports?.find((a) => a.code === q?.from_code);
   const to = airports?.find((a) => a.code === q?.to_code);
   const locked = q?.status === "Cancelled";
+  const paid = q?.payment_status === "paid";
 
   return (
     <View style={styles.root} testID="team-quote-screen">
@@ -101,7 +121,20 @@ export default function TeamQuote() {
             <Cell label="Flight time" value={`${formatDuration(q.flight_minutes)}${q.fuel_stops ? ` · ${q.fuel_stops} stop` : ""}`} />
             <Cell label="Estimate" value={usd(q.estimated_price_usd)} />
             <Cell label="Member email" value={q.email_status ?? "—"} />
+            <Cell label="Payment" value={paid ? `Paid · ${q.payment_method ?? "Card"}${q.payment_reference ? ` · ${q.payment_reference}` : ""}` : q.payment_status === "pending" ? "Checkout started" : "Unpaid"} />
           </View>
+          {!locked && (
+            <View style={styles.editRow}>
+              <Pressable style={styles.editBtn} onPress={() => router.push(`/team/edit/${id}`)} testID="team-edit-details-button">
+                <Feather name="edit-2" size={14} color={colors.onSurface} />
+                <Text style={styles.editText}>Edit trip</Text>
+              </Pressable>
+              <Pressable style={styles.editBtn} onPress={() => router.push({ pathname: "/trip/guests/[id]", params: { id, team: "1" } })} testID="team-edit-manifest-button">
+                <Feather name="users" size={14} color={colors.onSurface} />
+                <Text style={styles.editText}>Edit manifest</Text>
+              </Pressable>
+            </View>
+          )}
           {q.notes ? (
             <View style={styles.block}>
               <Text style={styles.label}>Member requests</Text>
@@ -130,6 +163,12 @@ export default function TeamQuote() {
 
           {locked ? (
             <View style={styles.block}><Text style={styles.body}>The member cancelled this request.</Text></View>
+          ) : paid ? (
+            <View style={styles.block} testID="team-paid-block">
+              <Text style={styles.section}>Paid in full</Text>
+              <Text style={styles.body}>{usd(q.final_price_usd ?? 0)} received{q.invoice_number ? ` · Invoice ${q.invoice_number}` : ""}. Price is locked; trip details and manifest can still be edited.</Text>
+              {saved ? <Text style={styles.saved} testID="team-saved">{saved}</Text> : null}
+            </View>
           ) : (
             <View style={styles.block}>
               <Text style={styles.section}>Respond</Text>
@@ -165,6 +204,25 @@ export default function TeamQuote() {
               <Pressable style={styles.secondary} onPress={() => update.mutate("Unavailable")} disabled={update.isPending} testID="team-unavailable-button">
                 <Text style={styles.secondaryText}>Mark unavailable</Text>
               </Pressable>
+
+              {q.status === "Confirmed" && q.final_price_usd ? (
+                <View style={styles.offline} testID="team-offline-payment">
+                  <Text style={styles.section}>Paid outside the app?</Text>
+                  <Text style={styles.body}>Record a bank transfer or other payment of {usd(q.final_price_usd)}. The member gets a receipt and PDF invoice.</Text>
+                  <View style={styles.chips}>
+                    {PAY_METHODS.map((m) => (
+                      <Pressable key={m} style={[styles.chip, payMethod === m && styles.chipOn]} onPress={() => setPayMethod(m)} testID={`team-pay-method-${m}`}>
+                        <Text style={[styles.chipText, payMethod === m && styles.chipTextOn]}>{m}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <Text style={styles.label}>Reference (optional)</Text>
+                  <TextInput value={payRef} onChangeText={setPayRef} style={styles.input} placeholder="e.g. Bank ref 88213" placeholderTextColor={colors.muted} testID="team-pay-ref-input" />
+                  <Pressable style={styles.primary} onPress={() => markPaid.mutate()} disabled={markPaid.isPending} testID="team-mark-paid-button">
+                    {markPaid.isPending ? <ActivityIndicator color={colors.onBrandPrimary} /> : <Text style={styles.primaryText}>Mark as paid</Text>}
+                  </Pressable>
+                </View>
+              ) : null}
             </View>
           )}
         </KeyboardAwareScrollView>
@@ -210,4 +268,13 @@ const useStyles = makeStyles((c) => ({
   primaryText: { fontFamily: fonts.text, fontSize: 15, color: c.onBrandPrimary },
   secondary: { marginTop: 12, height: 52, borderRadius: 4, borderWidth: 1, borderColor: c.border, alignItems: "center", justifyContent: "center" },
   secondaryText: { fontFamily: fonts.text, fontSize: 15, color: c.onSurface },
+  editRow: { flexDirection: "row", gap: 12, paddingHorizontal: 24, paddingTop: 16 },
+  editBtn: { flex: 1, minHeight: 44, borderRadius: 4, borderWidth: 1, borderColor: c.border, flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center" },
+  editText: { fontFamily: fonts.text, fontSize: 14, color: c.onSurface },
+  offline: { marginTop: 32, paddingTop: 24, borderTopWidth: 0.5, borderTopColor: c.border },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginVertical: 16 },
+  chip: { minHeight: 44, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderColor: c.border, alignItems: "center", justifyContent: "center" },
+  chipOn: { backgroundColor: c.brandPrimary, borderColor: c.brandPrimary },
+  chipText: { fontFamily: fonts.text, fontSize: 14, color: c.onSurface },
+  chipTextOn: { color: c.onBrandPrimary },
 }));

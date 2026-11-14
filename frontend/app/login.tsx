@@ -3,7 +3,7 @@ import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { KeyboardAwareScrollView, useKeyboardState } from "react-native-keyboard-controller";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -25,6 +25,11 @@ export default function Access() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Locked in place at rest (unless the form is taller than a small screen); scrolls while the keyboard is up so the focused field stays visible.
+  const keyboardOpen = useKeyboardState((s) => s.isVisible);
+  const [layoutH, setLayoutH] = useState(0);
+  const [contentH, setContentH] = useState(0);
+  const overflow = contentH > layoutH + 1;
 
   const run = async (fn: () => Promise<void>) => {
     setError(null);
@@ -71,9 +76,11 @@ export default function Access() {
   return (
     <View style={styles.root} testID="login-screen">
       <KeyboardAwareScrollView
-        bottomOffset={24}
+        bottomOffset={32}
         keyboardShouldPersistTaps="handled"
-        scrollEnabled={false}
+        scrollEnabled={keyboardOpen || overflow}
+        onLayout={(e) => setLayoutH(e.nativeEvent.layout.height)}
+        onContentSizeChange={(_, h) => setContentH(h)}
         bounces={false}
         overScrollMode="never"
         showsVerticalScrollIndicator={false}

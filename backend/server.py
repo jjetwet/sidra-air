@@ -268,6 +268,8 @@ class Quote(BaseDocument):
     payment_status: Optional[str] = None
     stripe_session_id: Optional[str] = None
     paid_at: Optional[str] = None
+    payment_method: Optional[str] = None
+    payment_reference: Optional[str] = None
     manifest_reminder_sent_at: Optional[str] = None
     guests: list[dict] = []
     created_at: str
@@ -309,6 +311,22 @@ class AdminUpdateIn(BaseModel):
     status: Literal["Requested", "Confirmed", "Unavailable"]
     final_price_usd: Optional[float] = Field(default=None, gt=0)
     team_message: str = Field(default="", max_length=1000)
+
+
+class AdminDetailsIn(BaseModel):
+    from_code: str
+    to_code: str
+    jet_id: str
+    trip_type: Literal["one_way", "return"] = "one_way"
+    depart_date: str = Field(pattern=_DATE_RE)
+    return_date: Optional[str] = Field(default=None, pattern=_DATE_RE)
+    depart_window: Literal["Morning", "Afternoon", "Evening", "Flexible"] = "Flexible"
+    pax: int = Field(ge=1, le=19)
+
+
+class AdminPaidIn(BaseModel):
+    method: Literal["Bank transfer", "Wire transfer", "Cash", "Other"]
+    reference: str = Field(default="", max_length=120)
 
 
 # ---------------------------------------------------------------- App
@@ -901,6 +919,81 @@ async def admin_update_quote(quote_id: str, body: AdminUpdateIn, _: User = Depen
         subject, html = emailer.flight_confirmed(Quote.from_mongo(doc).public(), AIRPORTS_BY_CODE)
         status = await _try_send(doc["email"], subject, html, "Confirmation email sent", "Confirmation email failed")
         doc = await db.quotes.find_one_and_update({"_id": doc["_id"]}, {"$set": {"email_status": status}}, return_document=True)
+    return Quote.from_mongo(doc).public()
+
+
+async def _editable_doc(quote_id: str) -> dict:
+    doc = await db.quotes.find_one({"_id": _oid(quote_id)})
+    if not doc:
+        raise HTTPException(404, "Trip not found")
+    if doc.get("status") == "Cancelled":
+        raise HTTPException(400, "The member cancelled this request")
+    return doc
+
+
+@api.post("/admin/quotes/{quote_id}/details")
+async def admin_edit_details(quote_id: str, body: AdminDetailsIn, _: User = Depends(admin_user)):
+    doc = await _editable_doc(quote_id)
+    est = estimate(body.from_code, body.to_code, body.jet_id, body.trip_type)
+    jet = FLEET_BY_ID[body.jet_id]
+    if body.pax > jet["pax"]:
+        raise HTTPException(400, f"{jet['name']} seats up to {jet['pax']} passengers")
+    if body.pax < len(doc.get("guests") or []):
+        raise HTTPException(400, f"The manifest already lists {len(doc['guests'])} guests. Remove guests first.")
+    depart = _valid_date(body.depart_date, "Departure")
+    ret = None
+    if body.trip_type == "return":
+        if not body.return_date:
+            raise HTTPException(400, "Return date required")
+        if _valid_date(body.return_date, "Return") < depart:
+            raise HTTPException(400, "Return must be on or after departure")
+        ret = body.return_date
+    update = {**body.model_dump(), "return_date": ret, "jet_name": jet["name"], "distance_nm": est["distance_nm"],
+              "flight_minutes": est["flight_minutes"], "fuel_stops": est["fuel_stops"],
+              "estimated_price_usd": est["estimated_price_usd"], "updated_at": now_iso()}
+    price_changed = any(doc.get(k) != update[k] for k in ("from_code", "to_code", "jet_id", "trip_type"))
+    if price_changed and doc.get("status") == "Confirmed" and doc.get("payment_status") != "paid":
+        # The confirmed price no longer matches the trip: send it back for a fresh price.
+        update.update(status="Requested", final_price_usd=None)
+    if doc.get("depart_date") != body.depart_date:
+        update["manifest_reminder_sent_at"] = None
+    doc = await db.quotes.find_one_and_update({"_id": doc["_id"]}, {"$set": update}, return_document=True)
+    return Quote.from_mongo(doc).public()
+
+
+@api.put("/admin/quotes/{quote_id}/guests")
+async def admin_save_guests(quote_id: str, body: GuestsIn, _: User = Depends(admin_user)):
+    doc = await _editable_doc(quote_id)
+    if len(body.guests) > doc["pax"]:
+        raise HTTPException(400, f"This trip is for {doc['pax']} guests")
+    _check_guests(body.guests, doc["depart_date"], doc.get("return_date"))
+    guests = [g.model_dump() for g in body.guests]
+    if doc.get("user_id"):
+        await _save_travellers(doc["user_id"], guests)
+    doc = await db.quotes.find_one_and_update(
+        {"_id": doc["_id"]}, {"$set": {"guests": guests, "updated_at": now_iso()}}, return_document=True
+    )
+    return Quote.from_mongo(doc).public()
+
+
+@api.post("/admin/quotes/{quote_id}/mark-paid")
+async def admin_mark_paid(quote_id: str, body: AdminPaidIn, request: Request, _: User = Depends(admin_user)):
+    doc = await _editable_doc(quote_id)
+    if doc.get("status") != "Confirmed" or not doc.get("final_price_usd"):
+        raise HTTPException(400, "Confirm the charter with a final price first")
+    doc = await db.quotes.find_one_and_update(
+        {"_id": doc["_id"], "payment_status": {"$ne": "paid"}},
+        {"$set": {"payment_status": "paid", "paid_at": now_iso(), "payment_method": body.method,
+                  "payment_reference": body.reference.strip() or None, "updated_at": now_iso(),
+                  "invoice_number": f"SID-{datetime.now(timezone.utc):%Y}-{quote_id[-6:].upper()}"}},
+        return_document=True,
+    )
+    if not doc:
+        raise HTTPException(409, "This charter has already been paid")
+    q = Quote.from_mongo(doc).public()
+    subject, html = emailer.payment_receipt(q, AIRPORTS_BY_CODE, body.reference.strip() or body.method, _invoice_url(doc, _base_url(request)))
+    status = await _try_send(q["email"], subject, html, "Receipt email sent", "Receipt email failed")
+    doc = await db.quotes.find_one_and_update({"_id": doc["_id"]}, {"$set": {"email_status": status}}, return_document=True)
     return Quote.from_mongo(doc).public()
 
 

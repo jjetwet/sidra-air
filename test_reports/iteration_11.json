@@ -1,0 +1,30 @@
+{
+  "summary": "Iteration-11 retest. BACKEND 8/8 new tests passed (/app/backend/tests/test_sidra_iter11_reprice_reset.py), and the iter10 regression still passes 20/20. On a Confirmed unpaid trip, changing to_code, from_code/to_code, jet_id or trip_type sets status to Requested and final_price_usd to null. The member GET shows this too, and mark-paid then returns 400. Changing only date/window/pax keeps Confirmed and the price. Resubmitting the same details keeps Confirmed. A paid trip keeps paid status, Confirmed and its price after a route/jet change. Moving depart_date clears manifest_reminder_sent_at; a pax-only edit leaves it alone. FRONTEND: Sign in works at 375x667 with joshua (a wrong password shows 'Incorrect email or password', the right one goes to Book home). The login screen does not scroll at rest: mouse wheel does nothing and overflowY is hidden. Chips on team/[id] (pay methods) and team/edit/[id] (trip type, window) are 44px high. The edit screen shows the Requested warning text. Saving a G650ER change on a Confirmed trip from the UI set it to Requested with a null price. NEW ISSUE: at 375x667 on the Create account step, the content (780px) is taller than the screen (667px) and scrolling is locked at rest. Only the top 23px of the 'Create account' button shows, and the 'Already a member? Sign in' link (y 712-756) is off-screen and cannot be reached unless the keyboard is open. The Sign in step fits (bottom 643). At 390x844 everything fits. The keyboard lift itself could not be checked on web because no soft keyboard appears there; the code is right (KeyboardAwareScrollView, bottomOffset 32, scrollEnabled from useKeyboardState, KeyboardProvider in _layout). Deprecated packages: none in touched files.",
+  "backend_issues": {"critical": [], "minor": [
+    {"endpoint": "POST /api/admin/quotes/{id}/details", "issue": "A Confirmed trip that resets to Requested sends the member no notification or email. They only see the status change in the app. Carried over from iter10."}
+  ]},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "login.tsx Create account step on small screens", "issue": "At 375x667 (iPhone SE) the content is 780px tall in a 667px screen, but scrollEnabled is false when the keyboard is closed. The Create account button is cut off and the 'Already a member? Sign in' link cannot be reached at rest. On native the safe-area insets add more height, so it is worse. Reference: /app/frontend/app/login.tsx:78,82,145", "testID": "go-sign-in-link", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_sidra_iter11_reprice_reset.py", "/app/test_reports/pytest/sidra_iter11.xml"],
+  "action_items": [
+    "login.tsx: keep scrolling enabled when the content is taller than the screen, e.g. scrollEnabled={keyboardOpen || contentH > layoutH} using onContentSizeChange/onLayout. Another option is to make paddingTop, the gap and the title size smaller on short screens (height < 700). Either way the CTA and the 'Sign in' link must be reachable on iPhone SE with the keyboard closed.",
+    "Optional: tell the member (email or push) when the team sends a Confirmed trip back to Requested."
+  ],
+  "critical_code_review_comments": [
+    "admin_edit_details: price_changed compares doc values with the body, so the same payload does not reset the status. The reset is skipped for paid trips. Both are correct.",
+    "KeyboardAwareScrollView can still scroll programmatically when scrollEnabled is false, so the scroll-on-focus approach works on native. The only problem is user scrolling at rest when the content overflows."
+  ],
+  "updated_files": ["/app/backend/tests/test_sidra_iter11_reprice_reset.py"],
+  "success_rate": {"backend": "100% (8/8 new + 20/20 iter10 regression)", "frontend": "~90% (1 small-screen login layout issue)"},
+  "seed_data_creation": "Created 8 TEST_ quotes from pytest and 1 from the UI (6af8ccb6eed4aed921134255) as member.test. All were deleted by id. The saved travellers TEST1101 and TEST1199 were deleted by id. Joshua's account was not changed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: EXPO_PUBLIC_BACKEND_URL=https://sidra-air--2uijgch0.preview.emergentagent.com python -m pytest /app/backend/tests/test_sidra_iter11_reprice_reset.py -v -o addopts=''. Web login flow: access-code-input -> access-submit-button -> register-name-input, or go-sign-in-link -> auth-email-input/auth-password-input. Token injection: localStorage sidra_session_token = JSON string. Going straight to /team/edit/{id} with page.goto leaves no history, so router.back shows a 'GO_BACK not handled' toast. That is a test artifact.",
+  "rca_of_issue": "Login overflow: scrollEnabled={keyboardOpen} locks the ScrollView whenever the keyboard is closed. The Create step has 3 fields, the 38px title, a 3-line subtitle and 48px+ top padding, which adds up to more than 667px. Reproduce: 375x667 -> enter code 2893159 -> Continue; the go-sign-in-link sits at y=712 with scrollTop stuck at 0."
+}
