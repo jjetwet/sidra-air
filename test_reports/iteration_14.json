@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 14 (frontend only, web preview, 390x844) of the new PickerFields (DateField and NationalityField) on the charter request screen and on the guest manifest (member view and team view ?team=1). Every requested flow passed (6/6). The nationality sheet opens; searching 'brit' returns only British; picking it closes the sheet and the field shows British. The DOB calendar opens in year-grid mode with 107 years (2026..1920) and the header shows 'Jan 1985' by default. Picking 1985, then Apr, then day 12 sets the value. prev/next step through months correctly and cross years (Jan 2030 prev gives Dec 2029). next is clamped at the maxYear boundary (it stays on Dec 2026). Expiry years run 2026..2041 (current to current+15). POST /api/quotes returned 200 with lead passenger {British, 1985-04-12, 2031-06-30}, and the app then navigated to /trip/{id}. On the guest manifest, adding guest 2 and using the pickers (Emirati, 1990-07-04, 2029-12-15) saved with PUT 200. Team mode with the admin login loads the saved values into the pickers and saves a nationality change with PUT 200. The X button and the backdrop both close the nationality and date sheets. The sheets fit 390x844: nationality sheet height 550, calendar sheet 456-474. Main bug: formatDate leaves out the year, so the DOB field shows 'Fri, Apr 12' and expiry shows 'Mon, Jun 30', with no year in either. Deprecated packages: none found.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "DateField trigger / formatDate", "issue": "The selected date shows without its year ('Fri, Apr 12' for 1985-04-12, 'Mon, Jun 30' for 2031-06-30). For a date of birth or passport expiry, the year is the most important part. The same formatDate is used on trip/[id].tsx:131,134 ('Born Fri, Apr 12') and team/[id].tsx:152. Reference: /app/frontend/src/api.ts:136-139, /app/frontend/src/components/PickerFields.tsx:80", "testID": "lead-dob-input, lead-expiry-input, guest-dob-input-{i}, guest-expiry-input-{i}", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "DateField year grid", "issues": [
+        "The year grid always opens scrolled to the top (2026). The default or selected year (1985) is about 10 rows down, so the user has to scroll to reach it. Auto-scroll to view.y, for example with ScrollView ref and scrollTo using the row index * 52.",
+        "The picker does not block impossible dates. DOB can be later than today (Dec 31 of the current year can be picked), and expiry can be earlier than today. The backend catches both with a clear manifest error ('...date of birth must be in the past'). Disabling day cells that are out of range would be better."
+      ]},
+      {"screen": "NationalityField sheet", "issues": [
+        "A search with no match (e.g. 'zzzz') shows an empty sheet with no 'No results' text. Add a ListEmptyComponent.",
+        "Modal uses animationType='slide', so the dim backdrop slides up together with the sheet instead of fading in."
+      ]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [".screenshots/nat_sheet.jpg", ".screenshots/dob_years.jpg", ".screenshots/dob_cal.jpg", ".screenshots/after_save.jpg"],
+  "action_items": [
+    "HIGH: Show the year in the DOB and expiry trigger text. Add a separate formatter, e.g. toLocaleDateString('en-US', {day:'numeric', month:'short', year:'numeric'}) giving '12 Apr 1985', and use it in PickerFields Trigger and in the guest summaries on trip/[id].tsx and team/[id].tsx.",
+    "Auto-scroll the year grid to the selected or default year when it opens.",
+    "Optional: disable DOB days later than today and expiry days earlier than today in the day grid. Add an empty state to the nationality list.",
+    "Minor: in guests/[id].tsx onSuccess, router.back() throws 'GO_BACK not handled' when the manifest is opened by deep link with no history. Use the canGoBack() ? back() : replace(`/trip/${id}`) pattern already used in charter.tsx."
+  ],
+  "critical_code_review_comments": [
+    "PickerFields.tsx is clean: testIDs are on all interactive children, touch targets are 44px or larger (month chips are 36px high), and values are stored as YYYY-MM-DD as required.",
+    "In DateField, init() only reads value when the sheet opens (show), which is correct. step() clamps to the year bounds as intended."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A", "frontend": "100% of requested flows functional (1 HIGH display bug)"},
+  "seed_data_creation": "Created trip 6af8d606eed4aed921134256 (TEST_ guests) and then cancelled it, since there is no delete endpoint. Created saved travellers dc273a7c43 and 5fcbe4ac90 and then deleted them by id.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Injecting the token through localStorage before goto did not authenticate the session. Log in through the UI instead: go-sign-in-link, auth-email-input, auth-password-input, access-submit-button. Then goto /charter?jet=global-7500&from=DXB&to=LBG&pax=2. After opening a picker sheet, wait about 900ms for the slide animation, otherwise clicks fail with 'outside of viewport'. The container/browser clock is Nov 2026, so the year ranges are 1920..2026 and 2026..2041."
+}

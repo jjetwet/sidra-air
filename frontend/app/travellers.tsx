@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import { ActivityIndicator, FlatList, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, formatDate, maskPassport } from "@/src/api";
+import { api, formatFullDate, maskPassport } from "@/src/api";
 import { useTravellers } from "@/src/queries";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
@@ -49,7 +49,7 @@ export default function Travellers() {
             <View style={styles.row} testID={`traveller-row-${index}`}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.name}>{item.full_name}</Text>
-                <Text style={styles.meta}>{item.nationality} · Passport {maskPassport(item.passport_number)} · Expires {formatDate(item.passport_expiry)}</Text>
+                <Text style={styles.meta}>{item.nationality} · Passport {maskPassport(item.passport_number)} · Expires {formatFullDate(item.passport_expiry)}</Text>
               </View>
               <Pressable onPress={() => item.id && remove.mutate(item.id)} style={styles.iconBtn} testID={`traveller-delete-${index}`}>
                 <Feather name="trash-2" size={18} color={colors.muted} />

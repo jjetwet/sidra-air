@@ -7,7 +7,7 @@ import { useState } from "react";
 import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, formatDate, formatDuration, maskPassport, Quote, usd } from "@/src/api";
+import { api, formatDate, formatDuration, formatFullDate, maskPassport, Quote, usd } from "@/src/api";
 import { ItineraryShare } from "@/src/components/ItineraryShare";
 import { RouteMap } from "@/src/components/RouteMap";
 import { StatusPill } from "@/src/components/StatusPill";
@@ -128,10 +128,10 @@ export default function TripDetail() {
               <Text style={styles.label}>Lead passenger</Text>
               <Text style={styles.leadName} testID="trip-detail-lead-name">{q.guests[0].full_name}</Text>
               <Text style={styles.body}>
-                {q.guests[0].nationality} · Born {formatDate(q.guests[0].date_of_birth)}
+                {q.guests[0].nationality} · Born {formatFullDate(q.guests[0].date_of_birth)}
               </Text>
               <Text style={styles.body}>
-                Passport {maskPassport(q.guests[0].passport_number)} · Expires {formatDate(q.guests[0].passport_expiry)}
+                Passport {maskPassport(q.guests[0].passport_number)} · Expires {formatFullDate(q.guests[0].passport_expiry)}
               </Text>
             </View>
           ) : null}

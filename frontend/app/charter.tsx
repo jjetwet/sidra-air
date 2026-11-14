@@ -9,7 +9,8 @@ import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboa
 import Animated, { FadeIn, FadeInUp, FadeOutUp } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Airport, api, asDate, Estimate, formatDuration, Guest, Quote, usd } from "@/src/api";
+import { DateField, NationalityField } from "@/src/components/PickerFields";
+import { Airport, api, Estimate, formatDuration, Guest, Quote, usd } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { AirportPicker } from "@/src/components/AirportPicker";
 import { DateStrip, DAYS, isoDate } from "@/src/components/DateStrip";
@@ -138,7 +139,7 @@ export default function CharterScreen() {
     if (!lead.full_name.trim() || !lead.nationality.trim() || lead.passport_number.trim().length < 4)
       return setError("Please complete the lead passenger's details.");
     if (!DATE_RE.test(lead.date_of_birth) || !DATE_RE.test(lead.passport_expiry))
-      return setError("Use YYYY-MM-DD for the lead passenger's dates.");
+      return setError("Select the lead passenger's date of birth and passport expiry.");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     submit.mutate();
   };
@@ -278,10 +279,10 @@ export default function CharterScreen() {
             onPick={(t) => setLead({ full_name: t.full_name, nationality: t.nationality, date_of_birth: t.date_of_birth, passport_number: t.passport_number, passport_expiry: t.passport_expiry })}
           />
           <Field label="Full name" value={lead.full_name} onChangeText={(v) => setLeadField({ full_name: v })} testID="lead-name-input" autoCapitalize="words" />
-          <Field label="Nationality" value={lead.nationality} onChangeText={(v) => setLeadField({ nationality: v })} testID="lead-nationality-input" autoCapitalize="words" />
-          <Field label="Date of birth (YYYY-MM-DD)" value={lead.date_of_birth} onChangeText={(v) => setLeadField({ date_of_birth: asDate(v) })} testID="lead-dob-input" keyboardType="number-pad" placeholder="1985-04-12" />
+          <NationalityField label="Nationality" value={lead.nationality} onChange={(v) => setLeadField({ nationality: v })} testID="lead-nationality-input" />
+          <DateField label="Date of birth" value={lead.date_of_birth} onChange={(v) => setLeadField({ date_of_birth: v })} testID="lead-dob-input" minYear={1920} maxYear={new Date().getFullYear()} defaultYear={1985} />
           <Field label="Passport number" value={lead.passport_number} onChangeText={(v) => setLeadField({ passport_number: v.toUpperCase() })} testID="lead-passport-input" autoCapitalize="characters" autoCorrect={false} />
-          <Field label="Passport expiry (YYYY-MM-DD)" value={lead.passport_expiry} onChangeText={(v) => setLeadField({ passport_expiry: asDate(v) })} testID="lead-expiry-input" keyboardType="number-pad" placeholder="2031-09-30" />
+          <DateField label="Passport expiry" value={lead.passport_expiry} onChange={(v) => setLeadField({ passport_expiry: v })} testID="lead-expiry-input" minYear={new Date().getFullYear()} maxYear={new Date().getFullYear() + 15} />
         </Section>
 
         <Section title="Booking contact">

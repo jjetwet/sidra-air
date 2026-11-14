@@ -68,3 +68,8 @@ Clean minimal jet illustrations (AI-generated, bundled) · AI concierge chat (Cl
 - Admin joshua@flysidra.com. Team can edit route/aircraft/dates/time/pax (/team/edit/[id]) and the manifest (/trip/guests/[id]?team=1). They can also record an offline payment (mark-paid sends a receipt and invoice).
 - Changing route, aircraft or trip type on a confirmed, unpaid trip sends it back to Requested with no price.
 - Login screen scrolls only while the keyboard is open or the form overflows a small screen.
+
+## Jun 2026 updates
+- Auto-confirm removed: bookings stay Requested until an admin confirms them with a price.
+- Date of birth and passport expiry use a calendar picker, and nationality uses a searchable list (src/components/PickerFields.tsx).
+- Open issues: STRIPE_API_KEY is publishable (pk_test), so checkout returns 503 and a secret key is needed (user skipped the request). The admin password on the live app is unresolved because the production DB is separate.

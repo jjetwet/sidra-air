@@ -7,7 +7,8 @@ import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-nativ
 import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, asDate, Guest, maskPassport, Quote } from "@/src/api";
+import { api, Guest, maskPassport, Quote } from "@/src/api";
+import { DateField, NationalityField } from "@/src/components/PickerFields";
 import { TravellerPicker } from "@/src/components/TravellerPicker";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
@@ -70,7 +71,7 @@ export default function GuestManifest() {
       }
       if (!DATE.test(g.date_of_birth) || !DATE.test(g.passport_expiry)) {
         setOpen(i);
-        return setError(`Use YYYY-MM-DD dates for ${who}.`);
+        return setError(`Select the date of birth and passport expiry for ${who}.`);
       }
     }
     save.mutate();
@@ -133,10 +134,10 @@ export default function GuestManifest() {
                   {expanded && (
                     <View style={styles.form}>
                       <Field label="Full name (as on passport)" value={g.full_name} onChangeText={(v) => update(i, { full_name: v })} testID={`guest-name-input-${i}`} autoCapitalize="words" />
-                      <Field label="Nationality" value={g.nationality} onChangeText={(v) => update(i, { nationality: v })} testID={`guest-nationality-input-${i}`} autoCapitalize="words" />
-                      <Field label="Date of birth (YYYY-MM-DD)" value={g.date_of_birth} onChangeText={(v) => update(i, { date_of_birth: asDate(v) })} testID={`guest-dob-input-${i}`} keyboardType="number-pad" placeholder="1985-04-12" />
+                      <NationalityField label="Nationality" value={g.nationality} onChange={(v) => update(i, { nationality: v })} testID={`guest-nationality-input-${i}`} />
+                      <DateField label="Date of birth" value={g.date_of_birth} onChange={(v) => update(i, { date_of_birth: v })} testID={`guest-dob-input-${i}`} minYear={1920} maxYear={new Date().getFullYear()} defaultYear={1985} />
                       <Field label="Passport number" value={g.passport_number} onChangeText={(v) => update(i, { passport_number: v.toUpperCase() })} testID={`guest-passport-input-${i}`} autoCapitalize="characters" autoCorrect={false} />
-                      <Field label="Passport expiry (YYYY-MM-DD)" value={g.passport_expiry} onChangeText={(v) => update(i, { passport_expiry: asDate(v) })} testID={`guest-expiry-input-${i}`} keyboardType="number-pad" placeholder="2031-09-30" />
+                      <DateField label="Passport expiry" value={g.passport_expiry} onChange={(v) => update(i, { passport_expiry: v })} testID={`guest-expiry-input-${i}`} minYear={new Date().getFullYear()} maxYear={new Date().getFullYear() + 15} />
                       <Pressable
                         style={styles.remove}
                         testID={`guest-remove-button-${i}`}

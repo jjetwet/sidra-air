@@ -16,6 +16,8 @@ import pytest
 import requests
 
 BASE_URL = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/")
+# Obsolete since iteration 15: AUTO_CONFIRM_TESTING was removed (see test_sidra_iter15_admin_confirm.py)
+pytestmark = pytest.mark.skip(reason="auto-confirm removed in iteration 15")
 MEMBER_TOKEN = "test_session_member"
 ADMIN_TOKEN = "test_session_team"
 

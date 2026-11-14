@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 15 tested the removal of auto-confirm (backend and frontend) and the year now shown in DOB and expiry dates. Backend: 9/9 pytest passed (test_sidra_iter15_admin_confirm.py). POST /api/quotes returns status 'Requested' with final_price_usd null, and the team_message is not the auto-confirm text. A GET afterwards shows the same state. Checkout before confirmation returns 409 'Payment opens once the SIDRA team confirms your charter'. A member calling the admin endpoint gets 403. Confirming without a price returns 400. When admin joshua confirms with final_price_usd, the quote becomes Confirmed and the member sees that price. Checkout after confirmation is no longer 409, but it returns 503 because the Stripe key is still a pk_test publishable key (known since iteration 7). Frontend (390x844): the member submitted a charter through the UI, saw the toast 'Quote requested · DXB → DOH' and was taken to the trip, which shows the Requested pill, 'Estimate $35,000', the line 'Our flight team will confirm...' and no pay button. Joshua opened the quote row on the Team dashboard (requested count 1), entered 41500 and tapped Confirm (POST 200). The member trip then showed the Confirmed pill, 'Final price $41,500', the team message and 'Pay $41,500 by card or Apple Pay'. Tapping Pay shows 'Payments are temporarily unavailable...', which is the Stripe key problem. The trip was then cancelled through the UI. Date fix verified: the DOB and expiry fields show '12 Apr 1985' and '30 Jun 2031', and 'Born 12 Apr 1985 / Expires 30 Jun 2031' appears on trip/[id] and team/[id]. Deprecated packages: none found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/payments/checkout", "issue": "Returns 503 for Confirmed quotes because STRIPE_API_KEY is a publishable key (pk_test). The Stripe log says secret_key_required. This is a configuration issue, not a code bug, and it has been open since iteration 7."},
+      {"endpoint": "POST /api/admin/quotes/{id}", "issue": "The confirmation email failed with emailer 429 'email rate limit exceeded' during testing. The admin UI shows this correctly ('Confirmed in the app, but the email could not be sent'). There is no retry."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "trip/[id]", "issues": ["A Confirmed trip always says 'Details have been sent to {email}', even when email_status is 'Confirmation email failed'. Reference: app/trip/[id].tsx:172", "The Departure cell still uses formatDate with no year ('Sat, Nov 21'). That is fine for near dates, but bookings made a year ahead are ambiguous. This is optional."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_sidra_iter15_admin_confirm.py", "/app/test_reports/pytest/iter15.xml", ".screenshots/i15_lead.jpg", ".screenshots/i15_trip_requested.jpg", ".screenshots/i15_team_after.jpg", ".screenshots/i15_member_confirmed.jpg", ".screenshots/i15_pay.jpg"],
+  "action_items": [
+    "Config: set STRIPE_API_KEY to a Stripe SECRET key (sk_test_/sk_live_) so that checkout works after admin confirmation.",
+    "Optional: in trip/[id].tsx:172, change the 'Details have been sent' copy when email_status contains 'failed'.",
+    "Optional: retry or queue member emails when the provider returns 429."
+  ],
+  "critical_code_review_comments": [
+    "server.py no longer references AUTO_CONFIRM, and backend/.env no longer has the key. create_quote leaves the default status 'Requested' and final_price_usd None.",
+    "_send_request_received still has a branch for q['status']=='Confirmed'. That branch cannot run now and can be simplified.",
+    "charter.tsx:125 toast still has a 'Flight confirmed' branch. It is harmless, but that code can no longer run."
+  ],
+  "updated_files": ["/app/backend/tests/test_sidra_iter15_admin_confirm.py (new)", "/app/backend/tests/test_sidra_autoconfirm_iter5.py (marked skipped as obsolete)"],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% of requested flows (pay is blocked only by the Stripe key config)"},
+  "seed_data_creation": "Created quotes 6af8d70535b05d1a69713c49, 6af8d70535b05d1a69713c4a and 6af8d75a0f7aff36c8aefd55 and cancelled all three. Deleted saved traveller b5f0782011 (TEST_Iter15 Lead) by id.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "pytest runs with xdist by default, so module fixtures run once per worker (2 quotes were created). Use -p no:xdist to create a single quote. Log in through the UI (go-sign-in-link, auth-email-input, auth-password-input, access-submit-button). The team row testID is team-quote-row-{id}, and the confirm controls are team-final-price-input and team-confirm-button. The container clock is Nov 2026."
+}

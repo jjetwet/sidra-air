@@ -7,7 +7,7 @@ import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-nativ
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, formatDate, formatDuration, Quote, usd } from "@/src/api";
+import { api, formatDate, formatDuration, formatFullDate, Quote, usd } from "@/src/api";
 import { RouteMap } from "@/src/components/RouteMap";
 import { StatusPill } from "@/src/components/StatusPill";
 import { useAirports } from "@/src/queries";
@@ -149,10 +149,10 @@ export default function TeamQuote() {
                 <View key={g.id ?? i} style={styles.guest} testID={`team-guest-${i}`}>
                   <Text style={styles.guestName}>{g.full_name}{i === 0 ? "  · Lead passenger" : ""}</Text>
                   <Text style={styles.guestMeta}>
-                    {g.nationality} · Born {formatDate(g.date_of_birth)}
+                    {g.nationality} · Born {formatFullDate(g.date_of_birth)}
                   </Text>
                   <Text style={styles.guestMeta}>
-                    Passport {g.passport_number} · Expires {formatDate(g.passport_expiry)}
+                    Passport {g.passport_number} · Expires {formatFullDate(g.passport_expiry)}
                   </Text>
                 </View>
               ))

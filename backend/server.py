@@ -37,7 +37,6 @@ mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ["DB_NAME"]]
 EMERGENT_LLM_KEY = os.environ["EMERGENT_LLM_KEY"]
-AUTO_CONFIRM_TESTING = os.environ.get("AUTO_CONFIRM_TESTING", "false").lower() == "true"
 TEAM_ALERT_EMAILS = [e.strip() for e in os.environ.get("TEAM_ALERT_EMAILS", "").split(",") if e.strip()]
 ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()}
 JWT_SECRET = os.environ["JWT_SECRET"]
@@ -520,10 +519,6 @@ async def create_quote(body: QuoteIn, background: BackgroundTasks, user: User = 
         raise HTTPException(400, "Return date required")
     _check_guests([body.lead_passenger], body.depart_date, body.return_date if body.trip_type == "return" else None)
     data = body.model_dump(exclude={"lead_passenger"})
-    if AUTO_CONFIRM_TESTING:
-        # Testing stage: confirm instantly at the estimated price so flows can be tried end to end.
-        data.update(status="Confirmed", final_price_usd=est["estimated_price_usd"],
-                    team_message="Auto-confirmed while SIDRA is in testing.")
     quote = Quote(
         **data,
         guests=[body.lead_passenger.model_dump()],
