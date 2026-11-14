@@ -30,6 +30,7 @@ mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ["DB_NAME"]]
 EMERGENT_LLM_KEY = os.environ["EMERGENT_LLM_KEY"]
+TEAM_ALERT_EMAILS = [e.strip() for e in os.environ.get("TEAM_ALERT_EMAILS", "").split(",") if e.strip()]
 ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()}
 EMERGENT_SESSION_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
 
@@ -207,6 +208,7 @@ class Quote(BaseDocument):
     final_price_usd: Optional[float] = None
     team_message: Optional[str] = None
     email_status: Optional[str] = None
+    guests: list[dict] = []
     created_at: str
     updated_at: Optional[str] = None
 
@@ -480,9 +482,63 @@ async def _try_send(to: str, subject: str, html: str, ok: str, fail: str) -> str
 
 async def _send_request_received(quote_id: str) -> None:
     doc = await db.quotes.find_one({"_id": ObjectId(quote_id)})
-    subject, html = emailer.request_received(Quote.from_mongo(doc).public(), AIRPORTS_BY_CODE)
+    q = Quote.from_mongo(doc).public()
+    subject, html = emailer.request_received(q, AIRPORTS_BY_CODE)
     status = await _try_send(doc["email"], subject, html, "Request email sent", "Request email failed")
     await db.quotes.update_one({"_id": doc["_id"]}, {"$set": {"email_status": status}})
+    # Alert the team inbox(es) straight away
+    subject, html = emailer.team_alert(q, AIRPORTS_BY_CODE)
+    for to in TEAM_ALERT_EMAILS:
+        await _try_send(to, subject, html, "ok", "failed")
+
+
+# ---------------------------------------------------------------- Guest manifest
+_DATE_RE = r"^\d{4}-\d{2}-\d{2}$"
+
+
+class Guest(BaseModel):
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex[:10])
+    full_name: str = Field(min_length=1, max_length=120)
+    nationality: str = Field(min_length=2, max_length=60)
+    date_of_birth: str = Field(pattern=_DATE_RE)
+    passport_number: str = Field(min_length=4, max_length=20, pattern=r"^[A-Za-z0-9]+$")
+    passport_expiry: str = Field(pattern=_DATE_RE)
+
+
+class GuestsIn(BaseModel):
+    guests: List[Guest] = Field(max_length=19)
+
+
+def _valid_date(s: str, label: str):
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(400, f"{label} is not a valid date")
+
+
+@api.put("/quotes/{quote_id}/guests")
+async def save_guests(quote_id: str, body: GuestsIn, user: User = Depends(current_user)):
+    doc = await db.quotes.find_one({"_id": _oid(quote_id), "user_id": user.user_id})
+    if not doc:
+        raise HTTPException(404, "Trip not found")
+    if doc.get("status") == "Cancelled":
+        raise HTTPException(400, "This request was cancelled")
+    if len(body.guests) > doc["pax"]:
+        raise HTTPException(400, f"This trip is for {doc['pax']} guests")
+    depart = _valid_date(doc["depart_date"], "Departure")
+    last_day = _valid_date(doc["return_date"], "Return") if doc.get("return_date") else depart
+    today = datetime.now(timezone.utc).date()
+    for g in body.guests:
+        if _valid_date(g.date_of_birth, f"{g.full_name}'s date of birth") >= today:
+            raise HTTPException(400, f"{g.full_name}'s date of birth must be in the past")
+        if _valid_date(g.passport_expiry, f"{g.full_name}'s passport expiry") <= last_day:
+            raise HTTPException(400, f"{g.full_name}'s passport expires before the trip ends")
+        g.passport_number = g.passport_number.upper()
+    guests = [g.model_dump() for g in body.guests]
+    doc = await db.quotes.find_one_and_update(
+        {"_id": doc["_id"]}, {"$set": {"guests": guests, "updated_at": now_iso()}}, return_document=True
+    )
+    return Quote.from_mongo(doc).public()
 
 
 # ---------------------------------------------------------------- Concierge

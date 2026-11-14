@@ -194,6 +194,21 @@ def request_received(q: dict, airports: dict) -> tuple[str, str]:
     return subject, html
 
 
+def team_alert(q: dict, airports: dict) -> tuple[str, str]:
+    subject = f"New quote request · {q['from_code']} to {q['to_code']} · {q['name']}"
+    notes = f"<b>Member requests:</b> {escape(q['notes'])}<br/><br/>" if q.get("notes") else ""
+    html = _layout(
+        "A member just sent a new charter request.",
+        "New quote request",
+        f"{escape(q['name'])} ({escape(q['email'])}) has requested a quote. Open the Team dashboard in the SIDRA app to confirm availability and send the final price.",
+        q,
+        airports,
+        [("Member", q["name"]), ("Member email", q["email"]), ("Estimate", f"{usd(q['estimated_price_usd'])} USD")],
+        notes + "Reply times matter: members are notified by email as soon as you confirm.",
+    )
+    return subject, html
+
+
 def flight_confirmed(q: dict, airports: dict) -> tuple[str, str]:
     first = escape(q["name"].split(" ")[0])
     subject = f"Your flight is confirmed · {q['from_code']} to {q['to_code']}"

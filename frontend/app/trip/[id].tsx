@@ -98,6 +98,22 @@ export default function TripDetail() {
             <Text style={styles.jetName}>{q.jet_name}</Text>
           </View>
 
+          <Pressable
+            testID="trip-manifest-button"
+            disabled={q.status === "Cancelled"}
+            onPress={() => router.push(`/trip/guests/${q.id}`)}
+            style={({ pressed }) => [styles.manifest, pressed && { backgroundColor: colors.surfaceSecondary }]}
+          >
+            <Feather name="users" size={18} color={colors.onSurface} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.manifestTitle}>Guest manifest</Text>
+              <Text style={styles.manifestSub} testID="trip-manifest-count">
+                {(q.guests?.length ?? 0)} of {q.pax} guests added{(q.guests?.length ?? 0) < q.pax && q.status !== "Cancelled" ? " · required before departure" : ""}
+              </Text>
+            </View>
+            {q.status !== "Cancelled" && <Feather name="chevron-right" size={18} color={colors.muted} />}
+          </Pressable>
+
           {q.notes ? (
             <View style={styles.block}>
               <Text style={styles.label}>Requests</Text>
@@ -191,6 +207,9 @@ const useStyles = makeStyles((c) => ({
   primary: { height: 52, borderRadius: 4, backgroundColor: c.brandPrimary, flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center" },
   primaryText: { fontFamily: fonts.text, fontSize: 15, color: c.onBrandPrimary },
   secondary: { height: 52, borderRadius: 4, borderWidth: 1, borderColor: c.border, flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center", marginTop: 12 },
+  manifest: { flexDirection: "row", alignItems: "center", gap: 16, marginHorizontal: 24, marginTop: 24, paddingHorizontal: 16, minHeight: 64, borderWidth: 1, borderColor: c.border, borderRadius: 4 },
+  manifestTitle: { fontFamily: fonts.text, fontSize: 15, color: c.onSurface },
+  manifestSub: { fontFamily: fonts.text, fontSize: 12, color: c.muted, marginTop: 2 },
   teamNote: { marginHorizontal: 24, marginTop: 24, padding: 16, backgroundColor: c.brandTertiary, borderRadius: 4 },
   secondaryText: { fontFamily: fonts.text, fontSize: 15, color: c.onSurface },
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" },

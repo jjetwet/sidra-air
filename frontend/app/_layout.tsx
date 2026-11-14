@@ -36,6 +36,7 @@ function Gate() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="jet/[id]" />
           <Stack.Screen name="trip/[id]" />
+          <Stack.Screen name="trip/guests/[id]" />
           <Stack.Screen name="profile" />
           <Stack.Protected guard={!!user?.is_admin}>
             <Stack.Screen name="team/index" />

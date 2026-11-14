@@ -29,3 +29,7 @@ Clean minimal jet illustrations (AI-generated, bundled) · AI concierge chat (Cl
 ## Iteration 3 (2026-06)
 - Team access: ADMIN_EMAILS = joshua@flysidra.com (+ test account)
 - Branded emails via Emergent managed Resend (from name SIDRA, reply-to joshua@flysidra.com): quote request received, flight confirmed with final price & team message; email_status shown on team request screen
+
+## Iteration 4 (2026-06)
+- New request alerts: branded "New quote request" email to TEAM_ALERT_EMAILS (joshua@flysidra.com) on every member request
+- Guest manifest: members add name, nationality, DOB, passport number & expiry per guest (up to pax); validated (DOB past, passport valid past trip end); team sees full manifest

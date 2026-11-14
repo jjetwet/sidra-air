@@ -46,9 +46,21 @@ export type Quote = Estimate & {
   final_price_usd?: number | null;
   team_message?: string | null;
   email_status?: string | null;
+  guests?: Guest[];
   created_at: string;
   updated_at?: string | null;
 };
+
+export type Guest = {
+  id?: string;
+  full_name: string;
+  nationality: string;
+  date_of_birth: string;
+  passport_number: string;
+  passport_expiry: string;
+};
+
+export const maskPassport = (p: string) => (p.length > 3 ? `•••• ${p.slice(-3)}` : p);
 
 export type ChatMessage = { id: string; role: "user" | "assistant"; content: string; created_at: string };
 

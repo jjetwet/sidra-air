@@ -109,6 +109,25 @@ export default function TeamQuote() {
             </View>
           ) : null}
 
+          <View style={styles.block} testID="team-manifest">
+            <Text style={styles.label}>Guest manifest · {q.guests?.length ?? 0} of {q.pax}</Text>
+            {q.guests?.length ? (
+              q.guests.map((g, i) => (
+                <View key={g.id ?? i} style={styles.guest} testID={`team-guest-${i}`}>
+                  <Text style={styles.guestName}>{g.full_name}</Text>
+                  <Text style={styles.guestMeta}>
+                    {g.nationality} · Born {formatDate(g.date_of_birth)}
+                  </Text>
+                  <Text style={styles.guestMeta}>
+                    Passport {g.passport_number} · Expires {formatDate(g.passport_expiry)}
+                  </Text>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.body}>The member hasn&apos;t added guests yet.</Text>
+            )}
+          </View>
+
           {locked ? (
             <View style={styles.block}><Text style={styles.body}>The member cancelled this request.</Text></View>
           ) : (
@@ -180,6 +199,9 @@ const useStyles = makeStyles((c) => ({
   value: { fontFamily: fonts.text, fontSize: 15, color: c.onSurface, fontVariant: ["tabular-nums"] },
   block: { paddingHorizontal: 24, paddingTop: 24 },
   body: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary },
+  guest: { paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: c.border },
+  guestName: { fontFamily: fonts.text, fontSize: 15, color: c.onSurface },
+  guestMeta: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary, marginTop: 2, fontVariant: ["tabular-nums"] },
   section: { fontFamily: fonts.display, fontSize: 22, color: c.onSurface, marginBottom: 16 },
   input: { minHeight: 48, borderWidth: 1, borderColor: c.border, borderRadius: 4, paddingHorizontal: 12, fontFamily: fonts.text, fontSize: 16, color: c.onSurface },
   error: { fontFamily: fonts.text, fontSize: 13, color: c.error, marginTop: 12 },
