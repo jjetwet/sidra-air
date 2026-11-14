@@ -43,16 +43,33 @@ export type Quote = Estimate & {
   email: string;
   notes: string;
   status: string;
+  final_price_usd?: number | null;
+  team_message?: string | null;
   created_at: string;
+  updated_at?: string | null;
 };
 
 export type ChatMessage = { id: string; role: "user" | "assistant"; content: string; created_at: string };
 
+export type User = { user_id: string; email: string; name: string; picture?: string | null; is_admin: boolean };
+
+// In-memory copy of the session token; AuthProvider owns storage and keeps this in sync.
+let authToken: string | null = null;
+let onUnauthorized: (() => void) | null = null;
+export const setAuthToken = (t: string | null) => {
+  authToken = t;
+};
+export const setUnauthorizedHandler = (fn: (() => void) | null) => {
+  onUnauthorized = fn;
+};
+export const authHeaders = (): Record<string, string> => (authToken ? { Authorization: `Bearer ${authToken}` } : {});
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API}${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    headers: { "Content-Type": "application/json", ...authHeaders(), ...(init?.headers ?? {}) },
   });
+  if (res.status === 401 && authToken && !path.startsWith("/auth/session")) onUnauthorized?.();
   if (!res.ok) {
     let detail = `Request failed (${res.status})`;
     try {

@@ -1,0 +1,37 @@
+{
+  "summary": "SIDRA iteration-2 verified end-to-end. Backend: 26/26 pytest tests pass covering (a) auth: /api/auth/me requires Bearer, returns correct is_admin for seeded member & team tokens, invalid token -> 401, POST /api/auth/session with bogus session_id -> 401 (upstream Emergent OAuth rejects), /api/me/claim requires auth and returns {quotes,messages}; (b) airports: GET /api/airports returns exactly 145 and includes LAS/LPL/MAN/LIN/DXB/FAB/TEB; estimate LAS->LPL returns ~4394 nm with non-zero price; (c) quote + concierge endpoints all return 401 without Bearer; (d) full admin flow: member creates LAS->LPL quote -> admin stats shows Requested>=1 -> admin list filtered by status returns it -> admin GET works -> POST /admin/quotes/{id} with Confirmed but no final_price -> 400 'Add a final price to confirm' -> POST with price+message -> 200, member then sees status/final_price/team_message via GET /api/quotes/{id} -> after member cancels, admin POST on cancelled quote -> 400 'The member cancelled this request' -> member tokens on /admin/* -> 403; (e) concierge SSE streams fine for signed-in user, history persists, DELETE clears. Frontend (390x844 mobile viewport): signed-out shows login screen with google-sign-in-button; injecting admin token test_session_team into localStorage.sidra_session_token as JSON string + reload signs in; Fleet home shows open-profile-button (avatar TT); profile-screen shows SIDRA TEAM badge, open-team-dashboard-button and sign-out-button; team-dashboard-screen renders stats + team-filter-{requested,confirmed,unavailable,cancelled} chips (lowercase in code) + team-quote-row-{id}; opening a quote shows team-final-price-input + team-message-input + team-confirm-button + team-unavailable-button; confirming sends final price + message. Switching to member token: Trips tab shows the quote as 'Confirmed'; trip detail renders route map with pale silver land / curved great-circle route, trip-detail-final-price '$199,000' and trip-detail-team-message 'TEST team confirmed via UI'. Share itinerary: trip-share-itinerary-button opens itinerary-share-sheet with itinerary-card (SIDRA mark, LAS->LPL, map, departure, aircraft); tapping itinerary-share-button on web reveals itinerary-note 'Sharing opens on your phone. Use the SIDRA app on iOS or Android.' Charter picker airport search matches 'vegas'->LAS, 'Liverpool'->LPL, 'Manchester'->MAN, 'Linate'->LIN. Member profile correctly hides open-team-dashboard-button; sign-out-button returns to login screen. No red-screen errors; no backend 5xx. Deprecated packages detected: expo-router/unstable-native-tabs warning still present from iteration-1 (not fixed).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "expo-router native tabs", "issue": "Still importing 'expo-router/unstable-native-tabs' (stable path is 'expo-router/native-tabs'). Reference: /app/frontend/app/(tabs)/_layout.tsx. Non-breaking deprecation warning carried over from iteration-1."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_sidra_auth_iter2.py",
+    "/app/test_reports/pytest/sidra_iter2.xml"
+  ],
+  "action_items": [
+    "(Optional, carried from iter-1) Replace 'expo-router/unstable-native-tabs' with 'expo-router/native-tabs' in /app/frontend/app/(tabs)/_layout.tsx to silence the deprecation console warning."
+  ],
+  "critical_code_review_comments": [
+    "server.py current_user() correctly validates Bearer scheme, timezone-aware expiry and user existence; admin_user depends on current_user for layered 401/403 behaviour (member hitting /admin/* yields 403, anonymous yields 401).",
+    "AdminUpdateIn uses Field(gt=0) for final_price_usd, and admin_update_quote explicitly rejects Confirmed without price with HTTP 400 - matches product rule; also blocks edits on Cancelled quotes.",
+    "Quote model / Quote.public() excludes mongo _id via BaseDocument; all admin and member responses are clean JSON.",
+    "/api/me/claim scopes updates to {user_id: None} so re-claiming a device cannot steal quotes that already belong to another user - good.",
+    "airports.json is loaded once at import; 145 entries including the newly requested LAS, LPL, MAN, LIN; haversine LAS->LPL ~4394 nm matches real-world great-circle (~4400 nm).",
+    "Concierge SSE endpoint writes user message before streaming and persists assistant content on success - ordering and error path both covered.",
+    "Minor: profile.tsx only exposes 'Requests / Confirmed' counts; for a team account these counts are personal quotes (0/0) rather than org-wide numbers - the Team dashboard already shows the global stats so this is fine but could be clarified."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_sidra_auth_iter2.py (new - 26 pytest cases for iteration-2)"
+  ],
+  "success_rate": {"backend": "100% (26/26)", "frontend": "100% of critical flows"},
+  "seed_data_creation": "Created one TEST_ member quote (LAS->LPL, Gulfstream G700) during admin UI flow and one extra test quote during pytest; both removed from Mongo after tests. Concierge messages for user_testmember1 cleared in teardown. No seeded user records or test_credentials entries were altered.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration-2 pytest file: /app/backend/tests/test_sidra_auth_iter2.py. Run with: EXPO_PUBLIC_BACKEND_URL=<public-url> MONGO_URL=mongodb://localhost:27017 DB_NAME=test_database python -m pytest backend/tests/test_sidra_auth_iter2.py -v -o addopts=''. Frontend auth bypass for testing: in browser context, localStorage.setItem('sidra_session_token', JSON.stringify('<token>')) then page.reload(). Admin token = test_session_team (user_testteam01, team.test@sidra.example, is_admin=true). Member token = test_session_member (user_testmember1). Team filter chips use lowercase testIDs: team-filter-requested, team-filter-confirmed, team-filter-unavailable, team-filter-cancelled. Share itinerary on web shows a note - no native share; expected per PRD.",
+  "rca_of_issue": "N/A - no functional defects found in iteration-2 scope."
+}

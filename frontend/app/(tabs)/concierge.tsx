@@ -8,7 +8,7 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import Animated, { FadeInUp } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { API, api, ChatMessage, getDeviceId } from "@/src/api";
+import { API, api, authHeaders, ChatMessage } from "@/src/api";
 import { MARK_SILVER } from "@/src/jets";
 import { usesNativeTabs } from "@/src/navigation";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
@@ -36,7 +36,7 @@ export default function ConciergeScreen() {
   useEffect(() => {
     (async () => {
       try {
-        setMessages(await api<ChatMessage[]>(`/concierge/history?device_id=${await getDeviceId()}`));
+        setMessages(await api<ChatMessage[]>("/concierge/history"));
       } catch {
         setError("Connection lost.");
       } finally {
@@ -61,8 +61,8 @@ export default function ConciergeScreen() {
     try {
       const res = await expoFetch(`${API}/concierge/stream`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-        body: JSON.stringify({ device_id: await getDeviceId(), message: msg }),
+        headers: { "Content-Type": "application/json", Accept: "text/event-stream", ...authHeaders() },
+        body: JSON.stringify({ message: msg }),
       });
       if (!res.ok || !res.body) throw new Error("bad response");
       const reader = res.body.getReader();
@@ -95,7 +95,7 @@ export default function ConciergeScreen() {
   };
 
   const clear = async () => {
-    await api(`/concierge/history?device_id=${await getDeviceId()}`, { method: "DELETE" });
+    await api("/concierge/history", { method: "DELETE" });
     setMessages([]);
   };
 

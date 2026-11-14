@@ -18,3 +18,10 @@ Clean minimal jet illustrations (AI-generated, bundled) · AI concierge chat (Cl
 - P1: Member sign-in so trips follow members across devices
 - P1: Admin/ops view to confirm quotes and send final prices
 - P2: Empty-leg deals, deposit payments, membership tiers
+
+## Iteration 2 (2026-06)
+- 145 business-jet airports (OurAirports coordinates) incl. Las Vegas, Liverpool, Manchester, Milan Linate
+- Real world map (Natural Earth land, pale silver on white) behind great-circle flight routes
+- Emergent Google Sign-In; trips & concierge chats tied to member; pre-sign-in device data claimed
+- Shareable itinerary image card (native share sheet; phone only)
+- Team dashboard for ADMIN_EMAILS staff: filter, confirm with final price + message, mark unavailable; members see results

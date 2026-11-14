@@ -38,6 +38,12 @@ const light = {
   border: "#E5E5E5",
   borderStrong: "#111111",
   divider: "#F0F0F0",
+
+  // Flight map
+  mapSea: "#FFFFFF",
+  mapLand: "#E3E5E8", // pale silver
+  mapLandStroke: "#CDD0D4",
+  mapGrid: "#F2F3F4",
 };
 
 export type ThemeColors = typeof light;

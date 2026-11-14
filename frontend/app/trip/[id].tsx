@@ -6,7 +6,8 @@ import { useState } from "react";
 import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, formatDate, formatDuration, getDeviceId, Quote, usd } from "@/src/api";
+import { api, formatDate, formatDuration, Quote, usd } from "@/src/api";
+import { ItineraryShare } from "@/src/components/ItineraryShare";
 import { RouteMap } from "@/src/components/RouteMap";
 import { StatusPill } from "@/src/components/StatusPill";
 import { JET_IMAGES } from "@/src/jets";
@@ -22,14 +23,15 @@ export default function TripDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data: airports } = useAirports();
   const [confirm, setConfirm] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   const { data: q, isLoading, isError } = useQuery({
     queryKey: ["quote", id],
-    queryFn: async () => api<Quote>(`/quotes/${id}?device_id=${await getDeviceId()}`),
+    queryFn: () => api<Quote>(`/quotes/${id}`),
   });
 
   const cancel = useMutation({
-    mutationFn: async () => api<Quote>(`/quotes/${id}/cancel?device_id=${await getDeviceId()}`, { method: "POST" }),
+    mutationFn: () => api<Quote>(`/quotes/${id}/cancel`, { method: "POST" }),
     onSuccess: (data) => {
       qc.setQueryData(["quote", id], data);
       qc.invalidateQueries({ queryKey: ["quotes"] });
@@ -77,8 +79,19 @@ export default function TripDetail() {
             <Cell label="Distance" value={`${q.distance_nm.toLocaleString("en-US")} nm`} />
             <Cell label="Flight time" value={`${formatDuration(q.flight_minutes)}${q.fuel_stops ? ` · ${q.fuel_stops} stop` : ""}`} />
             <Cell label="Guests" value={`${q.pax}`} />
-            <Cell label="Estimate" value={usd(q.estimated_price_usd)} testID="trip-detail-price" />
+            {q.final_price_usd ? (
+              <Cell label="Final price" value={usd(q.final_price_usd)} testID="trip-detail-final-price" />
+            ) : (
+              <Cell label="Estimate" value={usd(q.estimated_price_usd)} testID="trip-detail-price" />
+            )}
           </View>
+
+          {q.team_message ? (
+            <View style={styles.teamNote} testID="trip-detail-team-message">
+              <Text style={styles.label}>From the SIDRA team</Text>
+              <Text style={styles.body}>{q.team_message}</Text>
+            </View>
+          ) : null}
 
           <View style={styles.jet}>
             <Image source={JET_IMAGES[q.jet_id]} style={styles.jetImg} contentFit="contain" />
@@ -96,14 +109,24 @@ export default function TripDetail() {
             <Text style={styles.body}>
               {q.status === "Cancelled"
                 ? "This request has been cancelled."
-                : `Our flight team will confirm availability and send your final quote to ${q.email}.`}
+                : q.status === "Confirmed"
+                  ? `Your flight is confirmed. Details have been sent to ${q.email}.`
+                  : q.status === "Unavailable"
+                    ? "This aircraft isn't available for these dates. Ask the concierge for alternatives."
+                    : `Our flight team will confirm availability and send your final quote to ${q.email}.`}
             </Text>
           </View>
 
           <View style={styles.actions}>
-            <Pressable style={styles.primary} onPress={() => router.navigate("/concierge")} testID="trip-ask-concierge-button">
-              <Feather name="message-circle" size={16} color={colors.onBrandPrimary} />
-              <Text style={styles.primaryText}>Ask the concierge</Text>
+            {q.status !== "Cancelled" && (
+              <Pressable style={styles.primary} onPress={() => setSharing(true)} testID="trip-share-itinerary-button">
+                <Feather name="share" size={16} color={colors.onBrandPrimary} />
+                <Text style={styles.primaryText}>Share itinerary</Text>
+              </Pressable>
+            )}
+            <Pressable style={styles.secondary} onPress={() => router.navigate("/concierge")} testID="trip-ask-concierge-button">
+              <Feather name="message-circle" size={16} color={colors.onSurface} />
+              <Text style={styles.secondaryText}>Ask the concierge</Text>
             </Pressable>
             {q.status !== "Cancelled" && (
               <Pressable style={styles.secondary} onPress={() => setConfirm(true)} testID="trip-cancel-button">
@@ -113,6 +136,8 @@ export default function TripDetail() {
           </View>
         </ScrollView>
       )}
+
+      {q && <ItineraryShare visible={sharing} onClose={() => setSharing(false)} q={q} from={from} to={to} />}
 
       <Modal visible={confirm} transparent animationType="fade" onRequestClose={() => setConfirm(false)}>
         <Pressable style={styles.backdrop} onPress={() => setConfirm(false)}>
@@ -165,7 +190,8 @@ const useStyles = makeStyles((c) => ({
   actions: { paddingHorizontal: 24, paddingTop: 32, gap: 12 },
   primary: { height: 52, borderRadius: 4, backgroundColor: c.brandPrimary, flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center" },
   primaryText: { fontFamily: fonts.text, fontSize: 15, color: c.onBrandPrimary },
-  secondary: { height: 52, borderRadius: 4, borderWidth: 1, borderColor: c.border, alignItems: "center", justifyContent: "center", marginTop: 12 },
+  secondary: { height: 52, borderRadius: 4, borderWidth: 1, borderColor: c.border, flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center", marginTop: 12 },
+  teamNote: { marginHorizontal: 24, marginTop: 24, padding: 16, backgroundColor: c.brandTertiary, borderRadius: 4 },
   secondaryText: { fontFamily: fonts.text, fontSize: 15, color: c.onSurface },
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" },
   sheet: { backgroundColor: c.surface, padding: 24, borderTopLeftRadius: 8, borderTopRightRadius: 8 },

@@ -1,13 +1,15 @@
 import asyncio
 import json
 import math
+import uuid
 from contextlib import suppress
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, List, Literal, Optional
 
+import httpx
 from bson import ObjectId
 from dotenv import load_dotenv
-from fastapi import APIRouter, FastAPI, HTTPException, Query
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field
@@ -26,6 +28,8 @@ mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ["DB_NAME"]]
 EMERGENT_LLM_KEY = os.environ["EMERGENT_LLM_KEY"]
+ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()}
+EMERGENT_SESSION_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -33,9 +37,21 @@ logger = logging.getLogger(__name__)
 INDEXES: dict[str, list[IndexModel]] = {
     "quotes": [
         IndexModel([("device_id", ASCENDING), ("created_at", DESCENDING)], name="device_created"),
+        IndexModel([("user_id", ASCENDING), ("created_at", DESCENDING)], name="user_created"),
+        IndexModel([("status", ASCENDING), ("created_at", DESCENDING)], name="status_created"),
     ],
     "concierge_messages": [
         IndexModel([("device_id", ASCENDING), ("created_at", ASCENDING)], name="device_created"),
+        IndexModel([("user_id", ASCENDING), ("created_at", ASCENDING)], name="user_created"),
+    ],
+    "users": [
+        IndexModel([("email", ASCENDING)], name="email", unique=True),
+        IndexModel([("user_id", ASCENDING)], name="user_id", unique=True),
+    ],
+    "user_sessions": [
+        IndexModel([("session_token", ASCENDING)], name="session_token", unique=True),
+        IndexModel([("user_id", ASCENDING)], name="user_id"),
+        IndexModel([("expires_at", ASCENDING)], name="expires_ttl", expireAfterSeconds=0),
     ],
 }
 
@@ -106,38 +122,7 @@ FLEET = [
 ]
 FLEET_BY_ID = {j["id"]: j for j in FLEET}
 
-AIRPORTS = [
-    {"code": "DXB", "city": "Dubai", "name": "Dubai International", "country": "UAE", "lat": 25.2532, "lon": 55.3657},
-    {"code": "DWC", "city": "Dubai", "name": "Al Maktoum International", "country": "UAE", "lat": 24.8964, "lon": 55.1614},
-    {"code": "AUH", "city": "Abu Dhabi", "name": "Zayed International", "country": "UAE", "lat": 24.4330, "lon": 54.6511},
-    {"code": "DOH", "city": "Doha", "name": "Hamad International", "country": "Qatar", "lat": 25.2731, "lon": 51.6081},
-    {"code": "RUH", "city": "Riyadh", "name": "King Khalid International", "country": "Saudi Arabia", "lat": 24.9576, "lon": 46.6988},
-    {"code": "JED", "city": "Jeddah", "name": "King Abdulaziz International", "country": "Saudi Arabia", "lat": 21.6796, "lon": 39.1565},
-    {"code": "FAB", "city": "London", "name": "Farnborough", "country": "United Kingdom", "lat": 51.2758, "lon": -0.7763},
-    {"code": "LTN", "city": "London", "name": "Luton", "country": "United Kingdom", "lat": 51.8747, "lon": -0.3683},
-    {"code": "LBG", "city": "Paris", "name": "Le Bourget", "country": "France", "lat": 48.9694, "lon": 2.4414},
-    {"code": "NCE", "city": "Nice", "name": "Côte d'Azur", "country": "France", "lat": 43.6584, "lon": 7.2159},
-    {"code": "GVA", "city": "Geneva", "name": "Geneva", "country": "Switzerland", "lat": 46.2381, "lon": 6.1090},
-    {"code": "ZRH", "city": "Zurich", "name": "Zurich", "country": "Switzerland", "lat": 47.4647, "lon": 8.5492},
-    {"code": "CIA", "city": "Rome", "name": "Ciampino", "country": "Italy", "lat": 41.7994, "lon": 12.5949},
-    {"code": "LIN", "city": "Milan", "name": "Linate", "country": "Italy", "lat": 45.4451, "lon": 9.2767},
-    {"code": "MAD", "city": "Madrid", "name": "Barajas", "country": "Spain", "lat": 40.4983, "lon": -3.5676},
-    {"code": "IBZ", "city": "Ibiza", "name": "Ibiza", "country": "Spain", "lat": 38.8729, "lon": 1.3731},
-    {"code": "IST", "city": "Istanbul", "name": "Istanbul", "country": "Türkiye", "lat": 41.2753, "lon": 28.7519},
-    {"code": "TEB", "city": "New York", "name": "Teterboro", "country": "USA", "lat": 40.8501, "lon": -74.0608},
-    {"code": "VNY", "city": "Los Angeles", "name": "Van Nuys", "country": "USA", "lat": 34.2098, "lon": -118.4897},
-    {"code": "OPF", "city": "Miami", "name": "Opa-locka Executive", "country": "USA", "lat": 25.9070, "lon": -80.2784},
-    {"code": "ASE", "city": "Aspen", "name": "Aspen/Pitkin County", "country": "USA", "lat": 39.2232, "lon": -106.8690},
-    {"code": "BOM", "city": "Mumbai", "name": "Chhatrapati Shivaji", "country": "India", "lat": 19.0896, "lon": 72.8656},
-    {"code": "MLE", "city": "Malé", "name": "Velana International", "country": "Maldives", "lat": 4.1918, "lon": 73.5291},
-    {"code": "SIN", "city": "Singapore", "name": "Seletar", "country": "Singapore", "lat": 1.4172, "lon": 103.8678},
-    {"code": "HKG", "city": "Hong Kong", "name": "Hong Kong International", "country": "Hong Kong", "lat": 22.3080, "lon": 113.9185},
-    {"code": "HND", "city": "Tokyo", "name": "Haneda", "country": "Japan", "lat": 35.5494, "lon": 139.7798},
-    {"code": "SYD", "city": "Sydney", "name": "Kingsford Smith", "country": "Australia", "lat": -33.9399, "lon": 151.1753},
-    {"code": "CPT", "city": "Cape Town", "name": "Cape Town International", "country": "South Africa", "lat": -33.9715, "lon": 18.6021},
-    {"code": "RAK", "city": "Marrakech", "name": "Menara", "country": "Morocco", "lat": 31.6069, "lon": -8.0363},
-    {"code": "SEZ", "city": "Mahé", "name": "Seychelles International", "country": "Seychelles", "lat": -4.6743, "lon": 55.5218},
-]
+AIRPORTS = json.loads((ROOT_DIR / "airports.json").read_text(encoding="utf-8"))
 AIRPORTS_BY_CODE = {a["code"]: a for a in AIRPORTS}
 
 
@@ -177,7 +162,6 @@ def estimate(from_code: str, to_code: str, jet_id: str, trip_type: str) -> dict:
 
 # ---------------------------------------------------------------- Models
 class QuoteIn(BaseModel):
-    device_id: str = Field(min_length=6, max_length=64)
     from_code: str
     to_code: str
     jet_id: str
@@ -199,7 +183,8 @@ class EstimateIn(BaseModel):
 
 
 class Quote(BaseDocument):
-    device_id: str
+    user_id: Optional[str] = None
+    device_id: Optional[str] = None
     from_code: str
     to_code: str
     jet_id: str
@@ -217,19 +202,44 @@ class Quote(BaseDocument):
     fuel_stops: int
     estimated_price_usd: float
     status: str = "Requested"
+    final_price_usd: Optional[float] = None
+    team_message: Optional[str] = None
     created_at: str
+    updated_at: Optional[str] = None
 
 
 class ConciergeMessage(BaseDocument):
-    device_id: str
+    user_id: Optional[str] = None
+    device_id: Optional[str] = None
     role: Literal["user", "assistant"]
     content: str
     created_at: str
 
 
 class ChatIn(BaseModel):
-    device_id: str = Field(min_length=6, max_length=64)
     message: str = Field(min_length=1, max_length=2000)
+
+
+class User(BaseModel):
+    user_id: str
+    email: str
+    name: str = ""
+    picture: Optional[str] = None
+    is_admin: bool = False
+
+
+class SessionIn(BaseModel):
+    session_id: str = Field(min_length=1)
+
+
+class ClaimIn(BaseModel):
+    device_id: str = Field(min_length=6, max_length=64)
+
+
+class AdminUpdateIn(BaseModel):
+    status: Literal["Requested", "Confirmed", "Unavailable"]
+    final_price_usd: Optional[float] = Field(default=None, gt=0)
+    team_message: str = Field(default="", max_length=1000)
 
 
 # ---------------------------------------------------------------- App
@@ -248,6 +258,90 @@ api = APIRouter(prefix="/api")
 @api.get("/")
 async def root():
     return {"message": "SIDRA API"}
+
+
+# ---------------------------------------------------------------- Auth
+def _user_out(doc: dict) -> User:
+    return User(
+        user_id=doc["user_id"],
+        email=doc["email"],
+        name=doc.get("name", ""),
+        picture=doc.get("picture"),
+        is_admin=doc["email"].lower() in ADMIN_EMAILS,
+    )
+
+
+async def current_user(request: Request) -> User:
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(401, "Not authenticated")
+    token = auth[7:].strip()
+    sess = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
+    if not sess:
+        raise HTTPException(401, "Session not found")
+    exp = sess["expires_at"]
+    if isinstance(exp, str):
+        exp = datetime.fromisoformat(exp)
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp < datetime.now(timezone.utc):
+        raise HTTPException(401, "Session expired")
+    doc = await db.users.find_one({"user_id": sess["user_id"]}, {"_id": 0})
+    if not doc:
+        raise HTTPException(401, "User not found")
+    return _user_out(doc)
+
+
+async def admin_user(user: User = Depends(current_user)) -> User:
+    if not user.is_admin:
+        raise HTTPException(403, "Team access only")
+    return user
+
+
+@api.post("/auth/session")
+async def auth_session(body: SessionIn):
+    async with httpx.AsyncClient(timeout=15) as http:
+        r = await http.get(EMERGENT_SESSION_URL, headers={"X-Session-ID": body.session_id})
+    if r.status_code != 200:
+        raise HTTPException(401, "Invalid session")
+    data = r.json()
+    email = data["email"].lower()
+    existing = await db.users.find_one({"email": email}, {"_id": 0})
+    if existing:
+        user_id = existing["user_id"]
+        await db.users.update_one({"user_id": user_id}, {"$set": {"name": data.get("name", ""), "picture": data.get("picture")}})
+    else:
+        user_id = f"user_{uuid.uuid4().hex[:12]}"
+        await db.users.insert_one({"user_id": user_id, "email": email, "name": data.get("name", ""), "picture": data.get("picture"), "created_at": datetime.now(timezone.utc)})
+    token = data["session_token"]
+    now = datetime.now(timezone.utc)
+    await db.user_sessions.update_one(
+        {"session_token": token},
+        {"$set": {"session_token": token, "user_id": user_id, "expires_at": now + timedelta(days=7), "created_at": now}},
+        upsert=True,
+    )
+    doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    return {"session_token": token, "user": _user_out(doc).model_dump()}
+
+
+@api.get("/auth/me")
+async def auth_me(user: User = Depends(current_user)):
+    return user.model_dump()
+
+
+@api.post("/auth/logout")
+async def auth_logout(request: Request, user: User = Depends(current_user)):
+    token = request.headers.get("Authorization", "")[7:].strip()
+    await db.user_sessions.delete_one({"session_token": token})
+    return {"ok": True}
+
+
+@api.post("/me/claim")
+async def claim_device_data(body: ClaimIn, user: User = Depends(current_user)):
+    """Move trips and chats made before sign-in (keyed by device) onto this member."""
+    q = await db.quotes.update_many({"device_id": body.device_id, "user_id": None}, {"$set": {"user_id": user.user_id}})
+    m = await db.concierge_messages.update_many({"device_id": body.device_id, "user_id": None}, {"$set": {"user_id": user.user_id}})
+    return {"quotes": q.modified_count, "messages": m.modified_count}
 
 
 @api.get("/fleet")
@@ -274,7 +368,7 @@ async def post_estimate(body: EstimateIn):
 
 
 @api.post("/quotes")
-async def create_quote(body: QuoteIn):
+async def create_quote(body: QuoteIn, user: User = Depends(current_user)):
     est = estimate(body.from_code, body.to_code, body.jet_id, body.trip_type)
     jet = FLEET_BY_ID[body.jet_id]
     if body.pax > jet["pax"]:
@@ -283,6 +377,7 @@ async def create_quote(body: QuoteIn):
         raise HTTPException(400, "Return date required")
     quote = Quote(
         **body.model_dump(),
+        user_id=user.user_id,
         jet_name=jet["name"],
         distance_nm=est["distance_nm"],
         flight_minutes=est["flight_minutes"],
@@ -296,8 +391,8 @@ async def create_quote(body: QuoteIn):
 
 
 @api.get("/quotes")
-async def list_quotes(device_id: str = Query(min_length=6)):
-    docs = await db.quotes.find({"device_id": device_id}).sort("created_at", -1).to_list(200)
+async def list_quotes(user: User = Depends(current_user)):
+    docs = await db.quotes.find({"user_id": user.user_id}).sort("created_at", -1).to_list(200)
     return [Quote.from_mongo(d).public() for d in docs]
 
 
@@ -308,22 +403,61 @@ def _oid(quote_id: str) -> ObjectId:
 
 
 @api.get("/quotes/{quote_id}")
-async def get_quote(quote_id: str, device_id: str = Query(min_length=6)):
-    doc = await db.quotes.find_one({"_id": _oid(quote_id), "device_id": device_id})
+async def get_quote(quote_id: str, user: User = Depends(current_user)):
+    doc = await db.quotes.find_one({"_id": _oid(quote_id), "user_id": user.user_id})
     if not doc:
         raise HTTPException(404, "Trip not found")
     return Quote.from_mongo(doc).public()
 
 
 @api.post("/quotes/{quote_id}/cancel")
-async def cancel_quote(quote_id: str, device_id: str = Query(min_length=6)):
+async def cancel_quote(quote_id: str, user: User = Depends(current_user)):
     doc = await db.quotes.find_one_and_update(
-        {"_id": _oid(quote_id), "device_id": device_id},
-        {"$set": {"status": "Cancelled"}},
+        {"_id": _oid(quote_id), "user_id": user.user_id},
+        {"$set": {"status": "Cancelled", "updated_at": now_iso()}},
         return_document=True,
     )
     if not doc:
         raise HTTPException(404, "Trip not found")
+    return Quote.from_mongo(doc).public()
+
+
+# ---------------------------------------------------------------- Team dashboard
+@api.get("/admin/quotes")
+async def admin_quotes(status: Optional[str] = None, _: User = Depends(admin_user)):
+    filt = {"status": status} if status else {}
+    docs = await db.quotes.find(filt).sort("created_at", -1).to_list(500)
+    return [Quote.from_mongo(d).public() for d in docs]
+
+
+@api.get("/admin/stats")
+async def admin_stats(_: User = Depends(admin_user)):
+    counts = {s: 0 for s in ["Requested", "Confirmed", "Unavailable", "Cancelled"]}
+    async for row in db.quotes.aggregate([{"$group": {"_id": "$status", "n": {"$sum": 1}}}]):
+        counts[row["_id"]] = row["n"]
+    return counts
+
+
+@api.get("/admin/quotes/{quote_id}")
+async def admin_quote(quote_id: str, _: User = Depends(admin_user)):
+    doc = await db.quotes.find_one({"_id": _oid(quote_id)})
+    if not doc:
+        raise HTTPException(404, "Trip not found")
+    return Quote.from_mongo(doc).public()
+
+
+@api.post("/admin/quotes/{quote_id}")
+async def admin_update_quote(quote_id: str, body: AdminUpdateIn, _: User = Depends(admin_user)):
+    if body.status == "Confirmed" and not body.final_price_usd:
+        raise HTTPException(400, "Add a final price to confirm")
+    doc = await db.quotes.find_one({"_id": _oid(quote_id)})
+    if not doc:
+        raise HTTPException(404, "Trip not found")
+    if doc.get("status") == "Cancelled":
+        raise HTTPException(400, "The member cancelled this request")
+    update = {"status": body.status, "team_message": body.team_message.strip() or None, "updated_at": now_iso()}
+    update["final_price_usd"] = body.final_price_usd if body.status == "Confirmed" else None
+    doc = await db.quotes.find_one_and_update({"_id": doc["_id"]}, {"$set": update}, return_document=True)
     return Quote.from_mongo(doc).public()
 
 
@@ -346,28 +480,29 @@ and confirm the team will arrange it and follow up."""
 
 
 @api.get("/concierge/history")
-async def concierge_history(device_id: str = Query(min_length=6)):
-    docs = await db.concierge_messages.find({"device_id": device_id}).sort("created_at", 1).to_list(200)
+async def concierge_history(user: User = Depends(current_user)):
+    docs = await db.concierge_messages.find({"user_id": user.user_id}).sort("created_at", 1).to_list(200)
     return [ConciergeMessage.from_mongo(d).public() for d in docs]
 
 
 @api.delete("/concierge/history")
-async def clear_history(device_id: str = Query(min_length=6)):
-    await db.concierge_messages.delete_many({"device_id": device_id})
+async def clear_history(user: User = Depends(current_user)):
+    await db.concierge_messages.delete_many({"user_id": user.user_id})
     return {"ok": True}
 
 
 @api.post("/concierge/stream")
-async def concierge_stream(body: ChatIn):
-    prior = await db.concierge_messages.find({"device_id": body.device_id}).sort("created_at", -1).to_list(20)
+async def concierge_stream(body: ChatIn, user: User = Depends(current_user)):
+    prior = await db.concierge_messages.find({"user_id": user.user_id}).sort("created_at", -1).to_list(20)
     prior.reverse()
     transcript = "\n".join(f"{'Member' if m['role'] == 'user' else 'Concierge'}: {m['content']}" for m in prior)
-    system = SYSTEM_PROMPT + (f"\n\nConversation so far:\n{transcript}" if transcript else "")
+    system = SYSTEM_PROMPT + (f"\n\nThe member's name is {user.name}." if user.name else "")
+    system += f"\n\nConversation so far:\n{transcript}" if transcript else ""
 
-    user_msg = ConciergeMessage(device_id=body.device_id, role="user", content=body.message, created_at=now_iso())
+    user_msg = ConciergeMessage(user_id=user.user_id, role="user", content=body.message, created_at=now_iso())
     await db.concierge_messages.insert_one(user_msg.to_mongo())
 
-    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"concierge-{body.device_id}-{now_iso()}", system_message=system)
+    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"concierge-{user.user_id}-{now_iso()}", system_message=system)
     chat.with_model("anthropic", "claude-sonnet-5-5")
 
     async def gen():
@@ -384,7 +519,7 @@ async def concierge_stream(body: ChatIn):
             yield f"data: {json.dumps({'error': 'The concierge is momentarily unavailable. Please try again.'})}\n\n"
         full = "".join(parts).strip()
         if full:
-            msg = ConciergeMessage(device_id=body.device_id, role="assistant", content=full, created_at=now_iso())
+            msg = ConciergeMessage(user_id=user.user_id, role="assistant", content=full, created_at=now_iso())
             await db.concierge_messages.insert_one(msg.to_mongo())
         yield f"data: {json.dumps({'done': True})}\n\n"
 

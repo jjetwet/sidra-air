@@ -9,7 +9,8 @@ import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboa
 import Animated, { FadeIn, FadeInUp, FadeOutUp } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Airport, api, Estimate, formatDate, formatDuration, getDeviceId, Quote, usd } from "@/src/api";
+import { Airport, api, Estimate, formatDate, formatDuration, Quote, usd } from "@/src/api";
+import { useAuth } from "@/src/auth";
 import { AirportPicker } from "@/src/components/AirportPicker";
 import { BrandHeader } from "@/src/components/Brand";
 import { RouteMap } from "@/src/components/RouteMap";
@@ -39,6 +40,7 @@ export default function CharterScreen() {
   const router = useRouter();
   const qc = useQueryClient();
   const params = useLocalSearchParams<{ jet?: string }>();
+  const { user } = useAuth();
   const { data: fleet } = useFleet();
   const { data: airports } = useAirports();
 
@@ -63,10 +65,10 @@ export default function CharterScreen() {
 
   useEffect(() => {
     (async () => {
-      setName((await storage.getItem("sidra_name", "")) ?? "");
-      setEmail((await storage.getItem("sidra_email", "")) ?? "");
+      setName((await storage.getItem("sidra_name", "")) || user?.name || "");
+      setEmail((await storage.getItem("sidra_email", "")) || user?.email || "");
     })();
-  }, []);
+  }, [user]);
 
   const jet = fleet?.find((j) => j.id === jetId);
   useEffect(() => {
@@ -92,7 +94,6 @@ export default function CharterScreen() {
       api<Quote>("/quotes", {
         method: "POST",
         body: JSON.stringify({
-          device_id: await getDeviceId(),
           from_code: fromCode,
           to_code: toCode,
           jet_id: jetId,
