@@ -1,0 +1,32 @@
+{
+  "summary": "Iteration-9 scope (company accounts, charter invoices, admin paid-guard, change-password, login no-scroll) fully verified. BACKEND 11/11 PASSED (/app/backend/tests/test_sidra_iter9_company_invoice.py). COMPANY: GET /api/company returns Meridian Capital (owner=user_testmember1); POST /api/company -> 409 when already in company; PATCH /api/company by owner 200; invite flow -- fresh register qa.booker+<rand>@sidra.example (code 2893159) 201, POST /api/company/invite with that email makes the user a booker (company_role=booker), booker GET /api/company returns Meridian Capital, booker PATCH /api/company -> 403, booker GET /api/quotes includes PAID_QUOTE 6af84fb4ce36ea84dee70ff6 and GET /api/quotes/{id} 200, DELETE /api/company/members/{user_id} by owner 200 and booker GET /api/quotes no longer contains PAID_QUOTE; unknown email invite is added to pending_invites, subsequent /api/auth/register with that email auto-joins as booker with company_role=booker; DELETE /api/company/invites/{email} removes pending invite. INVOICE: POST /api/quotes/6af84fb4ce36ea84dee70ff6/invoice-link 200 returns signed URL (/api/invoices/{id}.pdf?t=<jwt>); GET of that URL returns 200 application/pdf (starts with %PDF); tampered token -> 403 'Invoice link has expired'; POST invoice-link on an unpaid quote -> 404. ADMIN GUARD: POST /api/admin/quotes/6af84fb4ce36ea84dee70ff6 by team.test -> 400 'This charter has been paid and can no longer be edited'. CHANGE PASSWORD: POST /api/auth/change-password with wrong current -> 400; success flow (member.test SidraTest2026 -> SidraTest2026NEW!) allows login with new password and rejects old password with 401; teardown ALWAYS resets back to SidraTest2026 (verified by final re-login). FRONTEND (mobile 390x844): /login shows login-screen and mouse wheel does NOT scroll (scrollTop stays 0 before/after a 500px wheel), confirming scrollEnabled:false. Profile -> open-company-button opens company-screen showing 'Meridian Capital' heading, billing details 1 King Street / London EC2V 8AU, VAT GB123456789, Team row 'Test Member - Account owner', and the existing pending invite 'qa.assistant@sidra.example - Invitation pending' with dismiss (x) button; company-invite-input and company-invite-button visible for the owner. Profile change-password UI: open-change-password-button toggles the form open with current-password-input, new-password-input, change-password-submit; submitting a wrong current password shows change-password-message with 'Your current password is incorrect'. Trip detail of paid quote 6af84fb4ce36ea84dee70ff6 (DWC->AMM, $41,500) shows trip-paid-banner AND trip-invoice-button as required. No new quotes were created (team inbox preserved); only short-lived TEST_* users/invites were created (and the booker member was subsequently removed by the owner via DELETE /api/company/members/{id}). Deprecated packages: none detected in the touched files. Everything works end-to-end.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_sidra_iter9_company_invoice.py",
+    "/app/test_reports/pytest/sidra_iter9.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py _scope() (line 300) correctly returns {company_id} when a user has a company so quotes are shared across the company; owners' existing private quotes are migrated onto the company at POST /api/company via update_many({user_id, company_id:null}) -- good.",
+    "server.py _invoice_url() signs a 365-day JWT with typ='invoice' and sub=quote_id; invoice_pdf() enforces both via jwt.decode options require sub/exp and typ + sub match -- correct signature + mismatch handling.",
+    "/api/invoices/{quote_id}.pdf requires payment_status='paid' before generating, so a paid-only link cannot leak unpaid quote data.",
+    "admin_update_quote() (server.py:886) blocks edits when payment_status=='paid' before any mutation -- matches spec.",
+    "change_password() hashes with bcrypt rounds=12 in a thread to avoid blocking the event loop; verification uses bcrypt.checkpw -- good.",
+    "/api/company/invite case-normalises email to lowercase before user lookup and pending-invite upsert -- prevents duplicate casing invites.",
+    "DELETE /api/company/members/{member_id} guards against removing the owner (400) and only clears company fields matching the current company_id (safe).",
+    "login.tsx (line 76) sets scrollEnabled={false} on KeyboardAwareScrollView; verified non-scrollable in web viewport."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (11/11)", "frontend": "100% on tested flows (login no-scroll, company screen, change-password UI, paid trip banner + invoice button)"},
+  "seed_data_creation": "Pytest created short-lived TEST_* qa.booker+<rand>@sidra.example and qa.unknown+<rand>@sidra.example users via /api/auth/register, used them to exercise the invite flows, and (for the invite-existing test) removed the booker via DELETE /api/company/members/{user_id}. One pending invite qa.cancel+<rand>@sidra.example was created then cancelled via DELETE /api/company/invites/{email}. Member password was temporarily rotated to SidraTest2026NEW! then RESET back to SidraTest2026 (confirmed by final login). No new quotes or long-lived data were created; the pre-existing pending invite 'qa.assistant@sidra.example' on Meridian Capital was untouched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run: EXPO_PUBLIC_BACKEND_URL=https://sidra-air--2uijgch0.preview.emergentagent.com python -m pytest /app/backend/tests/test_sidra_iter9_company_invoice.py -v -o addopts=''. The invite-existing test (test_invite_existing_user_registers_fresh_booker) adds/removes a TEST booker on Meridian Capital within one run; safe to re-run. If change-password reset fails for any reason, manually PATCH member.test password_hash to SidraTest2026 (bcrypt) in the users collection. Paid quote 6af84fb4ce36ea84dee70ff6 is the fixture used for invoice + admin-guard tests.",
+  "rca_of_issue": "N/A -- all iteration-9 features work as specified."
+}

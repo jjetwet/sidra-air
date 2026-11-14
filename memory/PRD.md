@@ -52,3 +52,14 @@ Clean minimal jet illustrations (AI-generated, bundled) · AI concierge chat (Cl
 - Saved travellers (auto saved from lead passenger + manifest), one tap pickers on Charter + Manifest, Profile > Saved travellers
 - Client access codes: team issues codes per client, referral performance ranking (members, charters, confirmed, paid revenue), activate/deactivate
 - BLOCKER: STRIPE_API_KEY is a publishable key (pk_test); needs secret key sk_test_ for payments
+
+## Iteration 9 (2026-06)
+- Company accounts: owner creates company (billing address, VAT), invites colleagues/assistants by email (existing users join; new emails auto join on sign up), shared bookings, remove members
+- Branded PDF invoices (reportlab) with company billing details; signed link in receipt email + Download invoice on paid trips
+- Change password in Profile; admin cannot edit paid charters; login screen fixed (no scroll)
+- Admin account joshua@flysidra.com created with temporary password (change in Profile)
+
+## Publish readiness review (Jun 2026)
+- Deployment health check: pass with warnings. Lint is clean.
+- Store review blockers: no in-app account deletion; no privacy policy link; no in-app AI disclosure for the concierge.
+- Warnings: no in-app support contact.

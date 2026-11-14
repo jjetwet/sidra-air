@@ -228,17 +228,21 @@ def manifest_reminder(q: dict, airports: dict) -> tuple[str, str]:
     return subject, html
 
 
-def payment_receipt(q: dict, airports: dict, reference: str) -> tuple[str, str]:
+def payment_receipt(q: dict, airports: dict, reference: str, invoice_url: str) -> tuple[str, str]:
     first = escape(q["name"].split(" ")[0])
     subject = f"Payment receipt · {q['from_code']} to {q['to_code']}"
+    button = (
+        f'<a href="{escape(invoice_url)}" style="display:inline-block;background:#111111;color:#FFFFFF;'
+        f'text-decoration:none;padding:12px 22px;font-size:14px;margin-bottom:16px">Download PDF invoice</a><br/>'
+    )
     html = _layout(
         "Your SIDRA charter payment has been received.",
         "Payment received.",
         f"Thank you, {first}. Your payment has been received and your charter is fully settled.",
         q,
         airports,
-        [("Amount paid", f"{usd(q['final_price_usd'])} USD"), ("Paid on", q["paid_at"][:10]), ("Reference", reference[-12:].upper())],
-        "Please retain this email for your records. Your SIDRA team will be in touch with final flight details ahead of departure.",
+        [("Amount paid", f"{usd(q['final_price_usd'])} USD"), ("Paid on", q["paid_at"][:10]), ("Invoice", q.get("invoice_number") or reference[-12:].upper())],
+        button + "Please retain this email and invoice for your records. Your SIDRA team will be in touch with final flight details ahead of departure.",
     )
     return subject, html
 

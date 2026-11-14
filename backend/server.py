@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
 
 import emailer
+import invoices
 from fastapi.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field
@@ -241,6 +242,8 @@ class EstimateIn(BaseModel):
 
 class Quote(BaseDocument):
     user_id: Optional[str] = None
+    company_id: Optional[str] = None
+    invoice_number: Optional[str] = None
     device_id: Optional[str] = None
     from_code: str
     to_code: str
@@ -289,6 +292,13 @@ class User(BaseModel):
     name: str = ""
     picture: Optional[str] = None
     is_admin: bool = False
+    company_id: Optional[str] = None
+    company_role: Optional[str] = None
+
+
+def _scope(user: "User") -> dict:
+    """Bookings are shared across a company account; otherwise private to the member."""
+    return {"company_id": user.company_id} if user.company_id else {"user_id": user.user_id}
 
 
 class ClaimIn(BaseModel):
@@ -327,6 +337,8 @@ def _user_out(doc: dict) -> User:
         name=doc.get("name", ""),
         picture=doc.get("picture"),
         is_admin=doc["email"].lower() in ADMIN_EMAILS,
+        company_id=doc.get("company_id"),
+        company_role=doc.get("company_role"),
     )
 
 
@@ -400,6 +412,9 @@ async def register(body: RegisterIn):
     pw_hash = await asyncio.to_thread(lambda: bcrypt.hashpw(body.password.encode(), bcrypt.gensalt(rounds=12)).decode())
     doc = {"user_id": f"user_{uuid.uuid4().hex[:12]}", "email": email, "name": body.name.strip(), "picture": None,
            "password_hash": pw_hash, "referral_code": body.invite_code.strip(), "created_at": datetime.now(timezone.utc)}
+    invite = await db.company_invites.find_one_and_delete({"email": email})
+    if invite:
+        doc.update(company_id=invite["company_id"], company_role="booker")
     try:
         await db.users.insert_one(doc)
     except DuplicateKeyError:
@@ -495,6 +510,7 @@ async def create_quote(body: QuoteIn, background: BackgroundTasks, user: User = 
         **data,
         guests=[body.lead_passenger.model_dump()],
         user_id=user.user_id,
+        company_id=user.company_id,
         jet_name=jet["name"],
         distance_nm=est["distance_nm"],
         flight_minutes=est["flight_minutes"],
@@ -511,7 +527,7 @@ async def create_quote(body: QuoteIn, background: BackgroundTasks, user: User = 
 
 @api.get("/quotes")
 async def list_quotes(user: User = Depends(current_user)):
-    docs = await db.quotes.find({"user_id": user.user_id}).sort("created_at", -1).to_list(200)
+    docs = await db.quotes.find({**_scope(user)}).sort("created_at", -1).to_list(200)
     return [Quote.from_mongo(d).public() for d in docs]
 
 
@@ -523,7 +539,7 @@ def _oid(quote_id: str) -> ObjectId:
 
 @api.get("/quotes/{quote_id}")
 async def get_quote(quote_id: str, user: User = Depends(current_user)):
-    doc = await db.quotes.find_one({"_id": _oid(quote_id), "user_id": user.user_id})
+    doc = await db.quotes.find_one({"_id": _oid(quote_id), **_scope(user)})
     if not doc:
         raise HTTPException(404, "Trip not found")
     return Quote.from_mongo(doc).public()
@@ -532,13 +548,146 @@ async def get_quote(quote_id: str, user: User = Depends(current_user)):
 @api.post("/quotes/{quote_id}/cancel")
 async def cancel_quote(quote_id: str, user: User = Depends(current_user)):
     doc = await db.quotes.find_one_and_update(
-        {"_id": _oid(quote_id), "user_id": user.user_id},
+        {"_id": _oid(quote_id), **_scope(user)},
         {"$set": {"status": "Cancelled", "updated_at": now_iso()}},
         return_document=True,
     )
     if not doc:
         raise HTTPException(404, "Trip not found")
     return Quote.from_mongo(doc).public()
+
+
+def _base_url(request: Request) -> str:
+    return f"{request.headers.get('x-forwarded-proto', request.url.scheme)}://{request.headers.get('x-forwarded-host', request.url.netloc)}"
+
+
+def _invoice_url(doc: dict, base: str) -> str:
+    now = datetime.now(timezone.utc)
+    tok = jwt.encode({"sub": str(doc["_id"]), "typ": "invoice", "iat": now, "exp": now + timedelta(days=365)}, JWT_SECRET, algorithm="HS256")
+    return f"{base}/api/invoices/{doc['_id']}.pdf?t={tok}"
+
+
+@api.get("/invoices/{quote_id}.pdf", include_in_schema=False)
+async def invoice_pdf(quote_id: str, t: str):
+    from fastapi.responses import Response
+    try:
+        claims = jwt.decode(t, JWT_SECRET, algorithms=["HS256"], options={"require": ["sub", "exp"]})
+    except jwt.PyJWTError:
+        raise HTTPException(403, "Invoice link has expired")
+    if claims.get("typ") != "invoice" or claims["sub"] != quote_id:
+        raise HTTPException(403, "Invalid invoice link")
+    doc = await db.quotes.find_one({"_id": _oid(quote_id), "payment_status": "paid"})
+    if not doc:
+        raise HTTPException(404, "Invoice not found")
+    company = await db.companies.find_one({"company_id": doc["company_id"]}, {"_id": 0}) if doc.get("company_id") else None
+    pdf = await asyncio.to_thread(invoices.build_invoice, Quote.from_mongo(doc).public(), company, AIRPORTS_BY_CODE)
+    return Response(pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="{doc.get("invoice_number", "invoice")}.pdf"'})
+
+
+@api.post("/quotes/{quote_id}/invoice-link")
+async def invoice_link(quote_id: str, request: Request, user: User = Depends(current_user)):
+    doc = await db.quotes.find_one({"_id": _oid(quote_id), **_scope(user)})
+    if not doc or doc.get("payment_status") != "paid":
+        raise HTTPException(404, "An invoice is available once the charter is paid")
+    return {"url": _invoice_url(doc, _base_url(request))}
+
+
+# ---------------------------------------------------------------- Company accounts
+class CompanyIn(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    billing_address: str = Field(default="", max_length=400)
+    vat_number: str = Field(default="", max_length=40)
+
+
+class InviteIn(BaseModel):
+    email: EmailStr
+
+
+async def _company_out(cid: str) -> dict:
+    c = await db.companies.find_one({"company_id": cid}, {"_id": 0})
+    members = await db.users.find({"company_id": cid}, {"_id": 0, "user_id": 1, "name": 1, "email": 1, "company_role": 1}).to_list(200)
+    invites = await db.company_invites.find({"company_id": cid}, {"_id": 0, "email": 1}).to_list(200)
+    return {**c, "members": members, "pending_invites": [i["email"] for i in invites]}
+
+
+def _owner(user: User):
+    if not user.company_id:
+        raise HTTPException(404, "You are not part of a company account")
+    if user.company_role != "owner":
+        raise HTTPException(403, "Only the account owner can do this")
+
+
+@api.get("/company")
+async def get_company(user: User = Depends(current_user)):
+    if not user.company_id:
+        return None
+    return await _company_out(user.company_id)
+
+
+@api.post("/company", status_code=201)
+async def create_company(body: CompanyIn, user: User = Depends(current_user)):
+    if user.company_id:
+        raise HTTPException(409, "You already belong to a company account")
+    cid = f"co_{uuid.uuid4().hex[:10]}"
+    await db.companies.insert_one({"company_id": cid, **body.model_dump(), "owner_user_id": user.user_id, "created_at": now_iso()})
+    await db.users.update_one({"user_id": user.user_id}, {"$set": {"company_id": cid, "company_role": "owner"}})
+    # Bring the owner's existing charters onto the company account
+    await db.quotes.update_many({"user_id": user.user_id, "company_id": None}, {"$set": {"company_id": cid}})
+    return await _company_out(cid)
+
+
+@api.patch("/company")
+async def update_company(body: CompanyIn, user: User = Depends(current_user)):
+    _owner(user)
+    await db.companies.update_one({"company_id": user.company_id}, {"$set": body.model_dump()})
+    return await _company_out(user.company_id)
+
+
+@api.post("/company/invite")
+async def invite_colleague(body: InviteIn, user: User = Depends(current_user)):
+    _owner(user)
+    email = body.email.lower()
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        if existing.get("company_id"):
+            raise HTTPException(409, "This person already belongs to a company account")
+        await db.users.update_one({"email": email}, {"$set": {"company_id": user.company_id, "company_role": "booker"}})
+    else:
+        await db.company_invites.update_one({"email": email}, {"$set": {"email": email, "company_id": user.company_id}}, upsert=True)
+    return await _company_out(user.company_id)
+
+
+@api.delete("/company/members/{member_id}")
+async def remove_member(member_id: str, user: User = Depends(current_user)):
+    _owner(user)
+    if member_id == user.user_id:
+        raise HTTPException(400, "The account owner cannot be removed")
+    await db.users.update_one({"user_id": member_id, "company_id": user.company_id}, {"$set": {"company_id": None, "company_role": None}})
+    return await _company_out(user.company_id)
+
+
+@api.delete("/company/invites/{email}")
+async def cancel_invite(email: str, user: User = Depends(current_user)):
+    _owner(user)
+    await db.company_invites.delete_one({"email": email.lower(), "company_id": user.company_id})
+    return await _company_out(user.company_id)
+
+
+class PasswordIn(BaseModel):
+    current_password: str = Field(min_length=1, max_length=72)
+    new_password: str = Field(min_length=8, max_length=72)
+
+
+@api.post("/auth/change-password")
+async def change_password(body: PasswordIn, user: User = Depends(current_user)):
+    doc = await db.users.find_one({"user_id": user.user_id})
+    ok = await asyncio.to_thread(lambda: bcrypt.checkpw(body.current_password.encode(), doc["password_hash"].encode()))
+    if not ok:
+        raise HTTPException(400, "Your current password is incorrect")
+    h = await asyncio.to_thread(lambda: bcrypt.hashpw(body.new_password.encode(), bcrypt.gensalt(rounds=12)).decode())
+    await db.users.update_one({"user_id": user.user_id}, {"$set": {"password_hash": h}})
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------- Payments (Stripe Checkout: card + Apple Pay)
@@ -552,7 +701,7 @@ def _stripe_ready():
     stripe.api_key = STRIPE_API_KEY
 
 
-async def _mark_paid_if_complete(doc: dict) -> dict:
+async def _mark_paid_if_complete(doc: dict, base_url: str) -> dict:
     sid = doc.get("stripe_session_id")
     if not sid or doc.get("payment_status") == "paid":
         return doc
@@ -562,11 +711,13 @@ async def _mark_paid_if_complete(doc: dict) -> dict:
     if s.payment_status == "paid" and s.amount_total == expected and (s.metadata or {}).get("quote_id") == str(doc["_id"]):
         doc = await db.quotes.find_one_and_update(
             {"_id": doc["_id"], "payment_status": {"$ne": "paid"}},
-            {"$set": {"payment_status": "paid", "paid_at": now_iso()}}, return_document=True,
+            {"$set": {"payment_status": "paid", "paid_at": now_iso(),
+                      "invoice_number": f"SID-{datetime.now(timezone.utc):%Y}-{str(doc['_id'])[-6:].upper()}"}},
+            return_document=True,
         )
         if doc:  # first time we saw it paid: send the receipt once
             q = Quote.from_mongo(doc).public()
-            subject, html = emailer.payment_receipt(q, AIRPORTS_BY_CODE, s.id)
+            subject, html = emailer.payment_receipt(q, AIRPORTS_BY_CODE, s.id, _invoice_url(doc, base_url))
             status = await _try_send(q["email"], subject, html, "Receipt email sent", "Receipt email failed")
             doc = await db.quotes.find_one_and_update({"_id": doc["_id"]}, {"$set": {"email_status": status}}, return_document=True)
             subject, html = emailer.team_payment_alert(q, AIRPORTS_BY_CODE)
@@ -583,7 +734,7 @@ async def _create_session(**kwargs):
 
 @api.post("/payments/checkout")
 async def create_checkout(body: CheckoutIn, request: Request, user: User = Depends(current_user)):
-    doc = await db.quotes.find_one({"_id": _oid(body.quote_id), "user_id": user.user_id})
+    doc = await db.quotes.find_one({"_id": _oid(body.quote_id), **_scope(user)})
     if not doc:
         raise HTTPException(404, "Trip not found")
     if doc.get("status") != "Confirmed" or not doc.get("final_price_usd"):
@@ -591,7 +742,7 @@ async def create_checkout(body: CheckoutIn, request: Request, user: User = Depen
     if doc.get("payment_status") == "paid":
         raise HTTPException(409, "This charter has already been paid")
     _stripe_ready()
-    base = f"{request.headers.get('x-forwarded-proto', request.url.scheme)}://{request.headers.get('x-forwarded-host', request.url.netloc)}"
+    base = _base_url(request)
     amount = int(round(doc["final_price_usd"] * 100))
     try:
         session = await _create_session(
@@ -614,11 +765,11 @@ async def create_checkout(body: CheckoutIn, request: Request, user: User = Depen
 
 
 @api.post("/payments/refresh/{quote_id}")
-async def refresh_payment(quote_id: str, user: User = Depends(current_user)):
-    doc = await db.quotes.find_one({"_id": _oid(quote_id), "user_id": user.user_id})
+async def refresh_payment(quote_id: str, request: Request, user: User = Depends(current_user)):
+    doc = await db.quotes.find_one({"_id": _oid(quote_id), **_scope(user)})
     if not doc:
         raise HTTPException(404, "Trip not found")
-    return Quote.from_mongo(await _mark_paid_if_complete(doc)).public()
+    return Quote.from_mongo(await _mark_paid_if_complete(doc, _base_url(request))).public()
 
 
 @api.get("/payments/return", include_in_schema=False)
@@ -741,6 +892,8 @@ async def admin_update_quote(quote_id: str, body: AdminUpdateIn, _: User = Depen
         raise HTTPException(404, "Trip not found")
     if doc.get("status") == "Cancelled":
         raise HTTPException(400, "The member cancelled this request")
+    if doc.get("payment_status") == "paid":
+        raise HTTPException(400, "This charter has been paid and can no longer be edited")
     update = {"status": body.status, "team_message": body.team_message.strip() or None, "updated_at": now_iso()}
     update["final_price_usd"] = body.final_price_usd if body.status == "Confirmed" else None
     doc = await db.quotes.find_one_and_update({"_id": doc["_id"]}, {"$set": update}, return_document=True)
@@ -778,7 +931,7 @@ async def _send_request_received(quote_id: str) -> None:
 
 @api.put("/quotes/{quote_id}/guests")
 async def save_guests(quote_id: str, body: GuestsIn, user: User = Depends(current_user)):
-    doc = await db.quotes.find_one({"_id": _oid(quote_id), "user_id": user.user_id})
+    doc = await db.quotes.find_one({"_id": _oid(quote_id), **_scope(user)})
     if not doc:
         raise HTTPException(404, "Trip not found")
     if doc.get("status") == "Cancelled":

@@ -70,7 +70,9 @@ function TripRow({ q, index, onPress }: { q: Quote; index: number; onPress: () =
         <Text style={styles.meta}>
           {formatDate(q.depart_date)}{q.trip_type === "return" && q.return_date ? ` – ${formatDate(q.return_date)}` : ""} · {q.jet_name}
         </Text>
-        <Text style={styles.price}>{usd(q.estimated_price_usd)} est. · {q.pax} guests</Text>
+        <Text style={styles.price}>
+          {q.final_price_usd ? `${usd(q.final_price_usd)}${q.payment_status === "paid" ? " paid" : ""}` : `${usd(q.estimated_price_usd)} est.`} · {q.pax} guests{q.company_id ? ` · Booked by ${q.name}` : ""}
+        </Text>
       </Pressable>
     </Animated.View>
   );

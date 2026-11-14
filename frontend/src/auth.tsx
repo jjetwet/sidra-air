@@ -13,6 +13,7 @@ type AuthState = {
   register: (p: { invite_code: string; name: string; email: string; password: string }) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -76,8 +77,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [accept],
   );
 
+  const refreshUser = useCallback(async () => {
+    setUser(await api<User>("/auth/me"));
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, loading, verifyCode, register, signIn, signOut: clear }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ user, loading, verifyCode, register, signIn, signOut: clear, refreshUser }}>{children}</AuthContext.Provider>
   );
 }
 

@@ -58,6 +58,8 @@ export type Quote = Estimate & {
   team_message?: string | null;
   email_status?: string | null;
   payment_status?: string | null;
+  invoice_number?: string | null;
+  company_id?: string | null;
   guests?: Guest[];
   created_at: string;
   updated_at?: string | null;
@@ -82,7 +84,7 @@ export const asDate = (v: string) => {
 
 export type ChatMessage = { id: string; role: "user" | "assistant"; content: string; created_at: string };
 
-export type User = { user_id: string; email: string; name: string; picture?: string | null; is_admin: boolean };
+export type User = { user_id: string; email: string; name: string; picture?: string | null; is_admin: boolean; company_id?: string | null; company_role?: string | null };
 
 // In-memory copy of the session token; AuthProvider owns storage and keeps this in sync.
 let authToken: string | null = null;

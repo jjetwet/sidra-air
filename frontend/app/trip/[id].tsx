@@ -179,9 +179,27 @@ export default function TripDetail() {
           <View style={styles.actions}>
             {q.status === "Confirmed" && q.final_price_usd ? (
               q.payment_status === "paid" ? (
-                <View style={styles.paidBox} testID="trip-paid-banner">
-                  <Feather name="check-circle" size={18} color={colors.success} />
-                  <Text style={styles.paidText}>Paid in full · {usd(q.final_price_usd)}</Text>
+                <View style={{ marginBottom: 12, gap: 12 }}>
+                  <View style={[styles.paidBox, { marginBottom: 0 }]} testID="trip-paid-banner">
+                    <Feather name="check-circle" size={18} color={colors.success} />
+                    <Text style={styles.paidText}>Paid in full · {usd(q.final_price_usd)}</Text>
+                  </View>
+                  <Pressable
+                    style={styles.secondary}
+                    testID="trip-invoice-button"
+                    onPress={async () => {
+                      try {
+                        const { url } = await api<{ url: string }>(`/quotes/${id}/invoice-link`, { method: "POST" });
+                        await WebBrowser.openBrowserAsync(url);
+                      } catch (e) {
+                        setPayError((e as Error).message);
+                      }
+                    }}
+                  >
+                    <Feather name="file-text" size={16} color={colors.onSurface} />
+                    <Text style={styles.secondaryText}>Download invoice {q.invoice_number ?? ""}</Text>
+                  </Pressable>
+                  {payError ? <Text style={styles.payError}>{payError}</Text> : null}
                 </View>
               ) : (
                 <View style={{ gap: 8, marginBottom: 12 }}>

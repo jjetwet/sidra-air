@@ -73,6 +73,10 @@ export default function Access() {
       <KeyboardAwareScrollView
         bottomOffset={24}
         keyboardShouldPersistTaps="handled"
+        scrollEnabled={false}
+        bounces={false}
+        overScrollMode="never"
+        showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.content, { paddingTop: insets.top + 48, paddingBottom: insets.bottom + 24 }]}
       >
         <Animated.View entering={FadeIn.duration(900)} style={styles.brand}>

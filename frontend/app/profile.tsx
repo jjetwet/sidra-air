@@ -2,9 +2,10 @@ import Feather from "@react-native-vector-icons/feather";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { api } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useQuotes } from "@/src/queries";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
@@ -17,6 +18,10 @@ export default function Profile() {
   const { user, signOut } = useAuth();
   const { data: quotes } = useQuotes();
   const [busy, setBusy] = useState(false);
+  const [pwOpen, setPwOpen] = useState(false);
+  const [curPw, setCurPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [pwMsg, setPwMsg] = useState<string | null>(null);
 
   if (!user) return null;
   const initials = (user.name || user.email).split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
@@ -52,6 +57,11 @@ export default function Profile() {
           </View>
         </View>
 
+        <Pressable style={styles.row} onPress={() => router.push("/company")} testID="open-company-button">
+          <Feather name="briefcase" size={18} color={colors.onSurface} />
+          <Text style={styles.rowText}>Company account</Text>
+          <Feather name="chevron-right" size={18} color={colors.muted} />
+        </Pressable>
         <Pressable style={styles.row} onPress={() => router.push("/travellers")} testID="open-travellers-button">
           <Feather name="users" size={18} color={colors.onSurface} />
           <Text style={styles.rowText}>Saved travellers</Text>
@@ -63,6 +73,35 @@ export default function Profile() {
             <Text style={styles.rowText}>Team dashboard</Text>
             <Feather name="chevron-right" size={18} color={colors.muted} />
           </Pressable>
+        )}
+        <Pressable style={styles.row} onPress={() => setPwOpen((o) => !o)} testID="open-change-password-button">
+          <Feather name="lock" size={18} color={colors.onSurface} />
+          <Text style={styles.rowText}>Change password</Text>
+          <Feather name={pwOpen ? "chevron-up" : "chevron-down"} size={18} color={colors.muted} />
+        </Pressable>
+        {pwOpen && (
+          <View style={styles.pwBox}>
+            <TextInput value={curPw} onChangeText={setCurPw} secureTextEntry placeholder="Current password" placeholderTextColor={colors.muted} style={styles.pwInput} testID="current-password-input" />
+            <TextInput value={newPw} onChangeText={setNewPw} secureTextEntry placeholder="New password (8+ characters)" placeholderTextColor={colors.muted} style={styles.pwInput} testID="new-password-input" />
+            {pwMsg ? <Text style={styles.pwMsg} testID="change-password-message">{pwMsg}</Text> : null}
+            <Pressable
+              style={styles.pwBtn}
+              testID="change-password-submit"
+              onPress={async () => {
+                setPwMsg(null);
+                try {
+                  await api("/auth/change-password", { method: "POST", body: JSON.stringify({ current_password: curPw, new_password: newPw }) });
+                  setCurPw("");
+                  setNewPw("");
+                  setPwMsg("Password updated.");
+                } catch (e) {
+                  setPwMsg((e as Error).message);
+                }
+              }}
+            >
+              <Text style={styles.pwBtnText}>Update password</Text>
+            </Pressable>
+          </View>
         )}
         <Pressable
           style={styles.row}
@@ -97,5 +136,10 @@ const useStyles = makeStyles((c) => ({
   statValue: { fontFamily: fonts.display, fontSize: 32, color: c.onSurface, fontVariant: ["tabular-nums"] },
   statLabel: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
   row: { flexDirection: "row", alignItems: "center", gap: 16, minHeight: 56, borderTopWidth: 0.5, borderTopColor: c.border },
+  pwBox: { paddingBottom: 16, gap: 8 },
+  pwInput: { height: 48, borderWidth: 1, borderColor: c.border, borderRadius: 8, paddingHorizontal: 12, fontFamily: fonts.text, fontSize: 15, color: c.onSurface },
+  pwMsg: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary },
+  pwBtn: { height: 48, borderRadius: 8, backgroundColor: c.brandPrimary, alignItems: "center", justifyContent: "center" },
+  pwBtnText: { fontFamily: fonts.display, fontSize: 14, color: c.onBrandPrimary },
   rowText: { flex: 1, fontFamily: fonts.text, fontSize: 16, color: c.onSurface },
 }));
