@@ -228,6 +228,35 @@ def manifest_reminder(q: dict, airports: dict) -> tuple[str, str]:
     return subject, html
 
 
+def payment_receipt(q: dict, airports: dict, reference: str) -> tuple[str, str]:
+    first = escape(q["name"].split(" ")[0])
+    subject = f"Payment receipt · {q['from_code']} to {q['to_code']}"
+    html = _layout(
+        "Your SIDRA charter payment has been received.",
+        "Payment received.",
+        f"Thank you, {first}. Your payment has been received and your charter is fully settled.",
+        q,
+        airports,
+        [("Amount paid", f"{usd(q['final_price_usd'])} USD"), ("Paid on", q["paid_at"][:10]), ("Reference", reference[-12:].upper())],
+        "Please retain this email for your records. Your SIDRA team will be in touch with final flight details ahead of departure.",
+    )
+    return subject, html
+
+
+def team_payment_alert(q: dict, airports: dict) -> tuple[str, str]:
+    subject = f"Payment received · {q['from_code']} to {q['to_code']} · {q['name']}"
+    html = _layout(
+        "A member has paid for a confirmed charter.",
+        "Charter paid",
+        f"{escape(q['name'])} ({escape(q['email'])}) has paid in full.",
+        q,
+        airports,
+        [("Amount paid", f"{usd(q['final_price_usd'])} USD")],
+        "The charter is fully settled and ready for operations.",
+    )
+    return subject, html
+
+
 def flight_confirmed(q: dict, airports: dict) -> tuple[str, str]:
     first = escape(q["name"].split(" ")[0])
     subject = f"Your flight is confirmed · {q['from_code']} to {q['to_code']}"

@@ -52,6 +52,11 @@ export default function Profile() {
           </View>
         </View>
 
+        <Pressable style={styles.row} onPress={() => router.push("/travellers")} testID="open-travellers-button">
+          <Feather name="users" size={18} color={colors.onSurface} />
+          <Text style={styles.rowText}>Saved travellers</Text>
+          <Feather name="chevron-right" size={18} color={colors.muted} />
+        </Pressable>
         {user.is_admin && (
           <Pressable style={styles.row} onPress={() => router.push("/team")} testID="open-team-dashboard-button">
             <Feather name="layout" size={18} color={colors.onSurface} />

@@ -8,6 +8,7 @@ import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboa
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, asDate, Guest, maskPassport, Quote } from "@/src/api";
+import { TravellerPicker } from "@/src/components/TravellerPicker";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 const EMPTY: Guest = { full_name: "", nationality: "", date_of_birth: "", passport_number: "", passport_expiry: "" };
@@ -43,6 +44,7 @@ export default function GuestManifest() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.setQueryData(["quote", id], data);
       qc.invalidateQueries({ queryKey: ["quotes"] });
+      qc.invalidateQueries({ queryKey: ["travellers"] });
       setSaved(true);
       setTimeout(() => router.back(), 900);
     },
@@ -92,6 +94,21 @@ export default function GuestManifest() {
               </Text>
               <Text style={styles.count} testID="manifest-count">{guests.length} of {q.pax} guests</Text>
             </View>
+
+            <TravellerPicker
+              label="Add a saved traveller in one tap"
+              selected={guests.map((g) => g.passport_number).filter(Boolean)}
+              onPick={(t) => {
+                setSaved(false);
+                setError(null);
+                if (guests.some((g) => g.passport_number === t.passport_number)) return;
+                const blank = guests.findIndex((g) => !g.passport_number);
+                const entry = { full_name: t.full_name, nationality: t.nationality, date_of_birth: t.date_of_birth, passport_number: t.passport_number, passport_expiry: t.passport_expiry };
+                if (blank >= 0) setGuests((gs) => gs.map((g, j) => (j === blank ? entry : g)));
+                else if (guests.length < q.pax) setGuests((gs) => [...gs, entry]);
+                else setError(`This charter is for ${q.pax} passengers.`);
+              }}
+            />
 
             {guests.map((g, i) => {
               const expanded = open === i;

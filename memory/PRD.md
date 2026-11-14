@@ -46,3 +46,9 @@ Clean minimal jet illustrations (AI-generated, bundled) · AI concierge chat (Cl
 - Corporate copy throughout (no hyphens), Manrope font
 - Invite only access: code 2893159 then create account (email + password, JWT); Google sign in removed
 - Stripe Checkout (card + Apple Pay) for confirmed charters, full price; needs STRIPE_API_KEY
+
+## Iteration 8 (2026-06)
+- Payment receipt email to member + payment alert to team, sent once when Stripe payment verified
+- Saved travellers (auto saved from lead passenger + manifest), one tap pickers on Charter + Manifest, Profile > Saved travellers
+- Client access codes: team issues codes per client, referral performance ranking (members, charters, confirmed, paid revenue), activate/deactivate
+- BLOCKER: STRIPE_API_KEY is a publishable key (pk_test); needs secret key sk_test_ for payments

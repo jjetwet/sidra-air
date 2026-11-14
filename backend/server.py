@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, List, Literal, Optional
 
 import hmac
+import secrets
 
 import bcrypt
 import jwt
@@ -56,6 +57,8 @@ INDEXES: dict[str, list[IndexModel]] = {
         IndexModel([("device_id", ASCENDING), ("created_at", ASCENDING)], name="device_created"),
         IndexModel([("user_id", ASCENDING), ("created_at", ASCENDING)], name="user_created"),
     ],
+    "access_codes": [IndexModel([("code", ASCENDING)], name="code", unique=True)],
+    "travellers": [IndexModel([("user_id", ASCENDING), ("passport_number", ASCENDING)], name="user_passport", unique=True)],
     "users": [
         IndexModel([("email", ASCENDING)], name="email", unique=True),
         IndexModel([("user_id", ASCENDING)], name="user_id", unique=True),
@@ -369,8 +372,11 @@ class LoginIn(BaseModel):
     password: str = Field(min_length=1, max_length=72)
 
 
-def _code_ok(code: str) -> bool:
-    return hmac.compare_digest(code.strip(), INVITE_CODE)
+async def _code_ok(code: str) -> bool:
+    code = code.strip()
+    if hmac.compare_digest(code, INVITE_CODE):
+        return True
+    return bool(await db.access_codes.find_one({"code": code, "active": True}))
 
 
 def _auth_response(doc: dict) -> dict:
@@ -379,21 +385,21 @@ def _auth_response(doc: dict) -> dict:
 
 @api.post("/auth/verify-code")
 async def verify_code(body: CodeIn):
-    if not _code_ok(body.invite_code):
+    if not await _code_ok(body.invite_code):
         raise HTTPException(400, "That access code is not recognised")
     return {"ok": True}
 
 
 @api.post("/auth/register", status_code=201)
 async def register(body: RegisterIn):
-    if not _code_ok(body.invite_code):
+    if not await _code_ok(body.invite_code):
         raise HTTPException(400, "That access code is not recognised")
     email = body.email.lower().strip()
     if await db.users.find_one({"email": email}):
         raise HTTPException(409, "An account with this email already exists. Please sign in.")
     pw_hash = await asyncio.to_thread(lambda: bcrypt.hashpw(body.password.encode(), bcrypt.gensalt(rounds=12)).decode())
     doc = {"user_id": f"user_{uuid.uuid4().hex[:12]}", "email": email, "name": body.name.strip(), "picture": None,
-           "password_hash": pw_hash, "created_at": datetime.now(timezone.utc)}
+           "password_hash": pw_hash, "referral_code": body.invite_code.strip(), "created_at": datetime.now(timezone.utc)}
     try:
         await db.users.insert_one(doc)
     except DuplicateKeyError:
@@ -497,6 +503,7 @@ async def create_quote(body: QuoteIn, background: BackgroundTasks, user: User = 
         created_at=now_iso(),
     )
     res = await db.quotes.insert_one(quote.to_mongo())
+    await _save_travellers(user.user_id, [body.lead_passenger.model_dump()])
     quote.id = str(res.inserted_id)
     background.add_task(_send_request_received, quote.id)
     return quote.public()
@@ -554,8 +561,19 @@ async def _mark_paid_if_complete(doc: dict) -> dict:
     expected = int(round((doc.get("final_price_usd") or 0) * 100))
     if s.payment_status == "paid" and s.amount_total == expected and (s.metadata or {}).get("quote_id") == str(doc["_id"]):
         doc = await db.quotes.find_one_and_update(
-            {"_id": doc["_id"]}, {"$set": {"payment_status": "paid", "paid_at": now_iso()}}, return_document=True
+            {"_id": doc["_id"], "payment_status": {"$ne": "paid"}},
+            {"$set": {"payment_status": "paid", "paid_at": now_iso()}}, return_document=True,
         )
+        if doc:  # first time we saw it paid: send the receipt once
+            q = Quote.from_mongo(doc).public()
+            subject, html = emailer.payment_receipt(q, AIRPORTS_BY_CODE, s.id)
+            status = await _try_send(q["email"], subject, html, "Receipt email sent", "Receipt email failed")
+            doc = await db.quotes.find_one_and_update({"_id": doc["_id"]}, {"$set": {"email_status": status}}, return_document=True)
+            subject, html = emailer.team_payment_alert(q, AIRPORTS_BY_CODE)
+            for to in TEAM_ALERT_EMAILS:
+                await _try_send(to, subject, html, "ok", "failed")
+        else:
+            doc = await db.quotes.find_one({"_id": ObjectId(str((s.metadata or {}).get("quote_id")))})
     return doc
 
 
@@ -611,6 +629,83 @@ async def payment_return(status: str = "success"):
 <title>SIDRA</title></head><body style="margin:0;font-family:Helvetica,Arial,sans-serif;background:#111;color:#fff;display:flex;
 align-items:center;justify-content:center;height:100vh;text-align:center"><div><div style="letter-spacing:8px;color:#A7A9AC">SIDRA</div>
 <h2 style="font-weight:600">{msg}</h2><p style="color:#A7A9AC">You may close this window and return to the SIDRA app.</p></div></body></html>""")
+
+
+# ---------------------------------------------------------------- Saved travellers
+def _traveller_out(d: dict) -> dict:
+    return {k: d.get(k) for k in ("id", "full_name", "nationality", "date_of_birth", "passport_number", "passport_expiry")}
+
+
+@api.get("/travellers")
+async def list_travellers(user: User = Depends(current_user)):
+    docs = await db.travellers.find({"user_id": user.user_id}, {"_id": 0}).sort("full_name", 1).to_list(200)
+    return [_traveller_out(d) for d in docs]
+
+
+async def _save_travellers(user_id: str, guests: list[dict]) -> None:
+    for g in guests:
+        data = {k: g[k] for k in ("full_name", "nationality", "date_of_birth", "passport_number", "passport_expiry")}
+        await db.travellers.update_one(
+            {"user_id": user_id, "passport_number": data["passport_number"]},
+            {"$set": {**data, "updated_at": now_iso()}, "$setOnInsert": {"id": uuid.uuid4().hex[:10], "user_id": user_id}},
+            upsert=True,
+        )
+
+
+@api.delete("/travellers/{traveller_id}")
+async def delete_traveller(traveller_id: str, user: User = Depends(current_user)):
+    res = await db.travellers.delete_one({"user_id": user.user_id, "id": traveller_id})
+    if not res.deleted_count:
+        raise HTTPException(404, "Traveller not found")
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- Client access codes (team)
+class AccessCodeIn(BaseModel):
+    client_name: str = Field(min_length=1, max_length=120)
+    code: Optional[str] = Field(default=None, pattern=r"^[A-Za-z0-9]{4,16}$")
+
+
+@api.get("/admin/codes")
+async def admin_codes(_: User = Depends(admin_user)):
+    codes = [{"code": INVITE_CODE, "client_name": "SIDRA general access", "active": True, "is_default": True}]
+    codes += [{**d, "is_default": False} for d in await db.access_codes.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)]
+    out = []
+    for c in codes:
+        users = await db.users.find({"referral_code": c["code"]}, {"user_id": 1, "_id": 0}).to_list(5000)
+        ids = [u["user_id"] for u in users]
+        charters, confirmed, revenue = 0, 0, 0.0
+        if ids:
+            async for q in db.quotes.find({"user_id": {"$in": ids}}, {"status": 1, "payment_status": 1, "final_price_usd": 1}):
+                charters += 1
+                if q.get("status") == "Confirmed":
+                    confirmed += 1
+                if q.get("payment_status") == "paid":
+                    revenue += q.get("final_price_usd") or 0
+        out.append({"code": c["code"], "client_name": c["client_name"], "active": c.get("active", True), "is_default": c["is_default"],
+                    "members": len(ids), "charters": charters, "confirmed": confirmed, "paid_revenue_usd": revenue})
+    out.sort(key=lambda r: (r["charters"], r["members"]), reverse=True)
+    return out
+
+
+@api.post("/admin/codes", status_code=201)
+async def create_code(body: AccessCodeIn, _: User = Depends(admin_user)):
+    code = (body.code or "").strip().upper() or str(secrets.randbelow(9_000_000) + 1_000_000)
+    if code == INVITE_CODE or await db.access_codes.find_one({"code": code}):
+        raise HTTPException(409, "That code is already in use")
+    doc = {"code": code, "client_name": body.client_name.strip(), "active": True, "created_at": now_iso()}
+    await db.access_codes.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api.post("/admin/codes/{code}/toggle")
+async def toggle_code(code: str, _: User = Depends(admin_user)):
+    doc = await db.access_codes.find_one({"code": code})
+    if not doc:
+        raise HTTPException(404, "Code not found")
+    await db.access_codes.update_one({"code": code}, {"$set": {"active": not doc.get("active", True)}})
+    return {"code": code, "active": not doc.get("active", True)}
 
 
 # ---------------------------------------------------------------- Team dashboard
@@ -692,6 +787,7 @@ async def save_guests(quote_id: str, body: GuestsIn, user: User = Depends(curren
         raise HTTPException(400, f"This trip is for {doc['pax']} guests")
     _check_guests(body.guests, doc["depart_date"], doc.get("return_date"))
     guests = [g.model_dump() for g in body.guests]
+    await _save_travellers(user.user_id, guests)
     doc = await db.quotes.find_one_and_update(
         {"_id": doc["_id"]}, {"$set": {"guests": guests, "updated_at": now_iso()}}, return_document=True
     )

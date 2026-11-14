@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration-8 scope (saved travellers, client access codes, payment receipts gating) verified. BACKEND 20/20 PASSED (/app/backend/tests/test_sidra_iter8_travellers_codes.py): GET /api/travellers 401 unauth; DELETE /api/travellers/{id} 401 unauth and 404 unknown; PUT /api/quotes/{id}/guests on member quote 6af848ce144d965544a37958 (pax=2) with two TEST_IT8 passports auto-upserts both into /api/travellers (idempotent on re-save, no duplicates); team cannot see member's passports (user isolation); DELETE cleans up; member -> GET/POST /api/admin/codes returns 403; team -> GET lists codes ranked with members/charters/confirmed/paid_revenue_usd fields and includes default 2893159 with is_default:true; auto-generated code is 7 digits; custom code accepted and upper-cased; duplicate -> 409; invalid shape (dash/punct) -> 422; register with active client code -> 201 and code.members increments by 1; toggle deactivates -> register on deactivated code -> 400 'not recognised'; re-toggle -> 200 and register -> 201; toggle on unknown code -> 404; /api/payments/checkout 503 'temporarily unavailable' on Confirmed quote (publishable key known); /api/payments/refresh/{id} 200 returns quote (and _mark_paid_if_complete is a no-op when no stripe_session_id); POST /api/payments/refresh/x 401 unauth. FRONTEND (mobile 390x844): profile open-travellers-button -> travellers-screen loads, existing 'Test Member' traveller-row-0 visible with masked passport + expiry and traveller-delete-0; back button returns to profile. Charter screen (pax=2 jet_id=g650 route LON-NCE) shows TravellerPicker label 'Choose a saved traveller' with saved-traveller-0 chip 'Test Member'; tapping the chip fills charter-name-input='Test Member', nationality='British', DOB 1985-04-12 and passport AB123456. Guest manifest screen (/trip/guests/{id}) shows traveller-picker with saved-traveller-0 chip 'Test Member' alongside existing guests. Team dashboard header exposes open-access-codes-button -> access-codes-screen with code-client-input, code-custom-input, code-create-button; creating a custom code 'UIIT8B81' adds code-row-UIIT8B81 at position 5 with Members/Charters/Confirmed/Paid stats; code-toggle-UIIT8B81 flips Deactivate->Activate and strikes through the code; code-copy-UIIT8B81 present; default code-row-2893159 (SIDRA general access) correctly has no toggle button because is_default. No new quotes created (team-inbox budget preserved); member quote 6af848ce144d965544a37958 (pax 2) reused per instructions. Known: STRIPE_API_KEY is still a publishable key -> /api/payments/checkout 503 (expected per review context, not a code bug) so the email-receipt + team-payment-alert branch in _mark_paid_if_complete could not be exercised E2E, but code inspection confirms atomic find_one_and_update guards 'receipt sent once' correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/payments/checkout", "issue": "Still 503 'Payments are temporarily unavailable' because STRIPE_API_KEY in /app/backend/.env is a publishable key (pk_...) not a secret key (sk_...). Known per review-request context; blocks live E2E verification of payment_receipt + team_payment_alert emails."},
+      {"endpoint": "DELETE /api/admin/codes/{code}", "issue": "No DELETE endpoint; test-created codes (TESTIT8*, UIIT8*) accumulate in production list. Pytest can only deactivate. Consider adding a DELETE or admin cleanup for test hygiene."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_sidra_iter8_travellers_codes.py",
+    "/app/test_reports/pytest/sidra_iter8.xml"
+  ],
+  "action_items": [
+    "Replace STRIPE_API_KEY with a Stripe SECRET key (sk_test_... or sk_live_...) so /api/payments/checkout returns a URL and the paid-via-refresh path (_mark_paid_if_complete) can deliver payment_receipt + team_payment_alert emails. After swap, retest by tapping trip-pay-button on a Confirmed quote, completing Stripe Checkout, then POST /api/payments/refresh/{id} and confirm payment_status='paid', email_status arrives, and team alert email is logged.",
+    "(Optional, low priority) Add DELETE /api/admin/codes/{code} for admins so QA-created access codes can be cleaned up instead of just deactivated. Currently only toggle is available."
+  ],
+  "critical_code_review_comments": [
+    "_save_travellers (server.py:645) correctly upserts by (user_id, passport_number) with $setOnInsert on id -- idempotent and user-scoped; unique index 'user_passport' in /_ensure_indexes guards duplicates. Good.",
+    "_mark_paid_if_complete (server.py:555-577) uses find_one_and_update with payment_status:{$ne:'paid'} to atomically guarantee receipt+team-alert emails fire only once per quote. Good.",
+    "/admin/codes GET (server.py:669-688) iterates all users per code then iterates quotes -- O(codes * quotes). Fine at current scale but consider aggregation pipeline if codes/quotes grow past ~thousands.",
+    "CodeIn.code pattern (server.py:666) accepts 4-16 alphanumerics; strip+upper() happens AFTER pattern validation so lowercase inputs validate and are then normalised -- OK.",
+    "TravellerPicker (components/TravellerPicker.tsx:9) returns null when data is empty -- correct hiding behaviour; chip uses testID 'saved-traveller-{i}' matching spec.",
+    "travellers.tsx renderItem delete handler wraps in `item.id && remove.mutate(item.id)` -- defensive and fine; API returns {id:...} always, so condition is always true.",
+    "team/codes.tsx default row correctly suppresses toggle (!c.is_default) so operators cannot accidentally disable the master invite code 2893159. Good safety guard.",
+    "payment_receipt + team_payment_alert emailer helpers exist (emailer.py:231,246) and are invoked inside the atomic branch -- no duplicate sends possible even on repeated /api/payments/refresh/{id} calls."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (20/20)", "frontend": "100% on tested flows (travellers list/delete, charter chip, guest manifest chip, access codes create/toggle/copy)"},
+  "seed_data_creation": "Pytest created two short-lived TEST_IT8_* travellers on member quote 6af848ce144d965544a37958 (then deleted them via DELETE /api/travellers/{id}); created ~4 TEST_IT8 access codes via /api/admin/codes (no DELETE endpoint exists, left deactivated where applicable); registered two qa users with TEST_IT8 prefix via /api/auth/register against TEST_IT8 codes. UI test additionally created access code UIIT8B81 (TEST_IT8 UI Client) and left it deactivated. No new quotes created; existing data on test accounts untouched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run: EXPO_PUBLIC_BACKEND_URL=https://sidra-air--2uijgch0.preview.emergentagent.com python -m pytest /app/backend/tests/test_sidra_iter8_travellers_codes.py -v -o addopts=''. Member has saved traveller 'Test Member' (passport AB123456) persistently -- expect it on charter + guest-manifest TravellerPicker. Access codes list is polluted with TEST_IT8*/UIIT8* codes from UI+pytest runs (no DELETE endpoint). Payment receipt flow still blocked by publishable Stripe key. Member quote 6af848ce144d965544a37958 (LAS->MAN, pax 2) is the only quote used for manifest tests.",
+  "rca_of_issue": "N/A -- all iter-8 functionality works. Only known limitation is Stripe key type (publishable instead of secret) which prevents end-to-end receipt email exercise; the atomic once-only email branch in _mark_paid_if_complete is otherwise code-correct."
+}

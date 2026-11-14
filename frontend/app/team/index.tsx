@@ -36,7 +36,9 @@ export default function TeamDashboard() {
           <Feather name="arrow-left" size={22} color={colors.onSurfaceInverse} />
         </Pressable>
         <Text style={styles.headerTitle}>SIDRA TEAM</Text>
-        <View style={styles.iconBtn} />
+        <Pressable onPress={() => router.push("/team/codes")} style={styles.iconBtn} testID="open-access-codes-button">
+          <Feather name="key" size={20} color={colors.onSurfaceInverse} />
+        </Pressable>
       </View>
       <View style={styles.hero}>
         <Text style={styles.title}>Quote requests</Text>

@@ -14,6 +14,7 @@ import { useAuth } from "@/src/auth";
 import { AirportPicker } from "@/src/components/AirportPicker";
 import { DateStrip, DAYS, isoDate } from "@/src/components/DateStrip";
 import { RouteMap } from "@/src/components/RouteMap";
+import { TravellerPicker } from "@/src/components/TravellerPicker";
 import { JET_IMAGES } from "@/src/jets";
 import { useAirports, useFleet } from "@/src/queries";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
@@ -270,6 +271,12 @@ export default function CharterScreen() {
 
         <Section title="Lead passenger">
           <Text style={styles.leadHint}>Enter details exactly as shown on the passport. Additional passengers can be added from the trip.</Text>
+          <TravellerPicker
+            inset={0}
+            label="Choose a saved traveller"
+            selected={lead.passport_number ? [lead.passport_number] : []}
+            onPick={(t) => setLead({ full_name: t.full_name, nationality: t.nationality, date_of_birth: t.date_of_birth, passport_number: t.passport_number, passport_expiry: t.passport_expiry })}
+          />
           <Field label="Full name" value={lead.full_name} onChangeText={(v) => setLeadField({ full_name: v })} testID="lead-name-input" autoCapitalize="words" />
           <Field label="Nationality" value={lead.nationality} onChangeText={(v) => setLeadField({ nationality: v })} testID="lead-nationality-input" autoCapitalize="words" />
           <Field label="Date of birth (YYYY-MM-DD)" value={lead.date_of_birth} onChangeText={(v) => setLeadField({ date_of_birth: asDate(v) })} testID="lead-dob-input" keyboardType="number-pad" placeholder="1985-04-12" />
