@@ -49,7 +49,13 @@ export default function TeamQuote() {
       qc.setQueryData(["admin-quote", id], data);
       qc.invalidateQueries({ queryKey: ["admin-quotes"] });
       qc.invalidateQueries({ queryKey: ["admin-stats"] });
-      setSaved(data.status === "Confirmed" ? "Confirmed and final price sent to the member." : `Marked ${data.status}.`);
+      setSaved(
+        data.status === "Confirmed"
+          ? data.email_status === "Confirmation email sent"
+            ? `Confirmed. Branded confirmation emailed to ${data.email}.`
+            : "Confirmed in the app, but the email could not be sent. The member still sees it in Trips."
+          : `Marked ${data.status}.`,
+      );
       setError(null);
     },
     onError: (e: Error) => {
@@ -94,6 +100,7 @@ export default function TeamQuote() {
             <Cell label="Guests" value={`${q.pax}`} />
             <Cell label="Flight time" value={`${formatDuration(q.flight_minutes)}${q.fuel_stops ? ` · ${q.fuel_stops} stop` : ""}`} />
             <Cell label="Estimate" value={usd(q.estimated_price_usd)} />
+            <Cell label="Member email" value={q.email_status ?? "—"} />
           </View>
           {q.notes ? (
             <View style={styles.block}>

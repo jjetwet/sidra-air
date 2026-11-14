@@ -45,6 +45,7 @@ export type Quote = Estimate & {
   status: string;
   final_price_usd?: number | null;
   team_message?: string | null;
+  email_status?: string | null;
   created_at: string;
   updated_at?: string | null;
 };

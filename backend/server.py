@@ -9,7 +9,9 @@ from typing import Annotated, Any, List, Literal, Optional
 import httpx
 from bson import ObjectId
 from dotenv import load_dotenv
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
+
+import emailer
 from fastapi.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field
@@ -204,6 +206,7 @@ class Quote(BaseDocument):
     status: str = "Requested"
     final_price_usd: Optional[float] = None
     team_message: Optional[str] = None
+    email_status: Optional[str] = None
     created_at: str
     updated_at: Optional[str] = None
 
@@ -368,7 +371,7 @@ async def post_estimate(body: EstimateIn):
 
 
 @api.post("/quotes")
-async def create_quote(body: QuoteIn, user: User = Depends(current_user)):
+async def create_quote(body: QuoteIn, background: BackgroundTasks, user: User = Depends(current_user)):
     est = estimate(body.from_code, body.to_code, body.jet_id, body.trip_type)
     jet = FLEET_BY_ID[body.jet_id]
     if body.pax > jet["pax"]:
@@ -387,6 +390,7 @@ async def create_quote(body: QuoteIn, user: User = Depends(current_user)):
     )
     res = await db.quotes.insert_one(quote.to_mongo())
     quote.id = str(res.inserted_id)
+    background.add_task(_send_request_received, quote.id)
     return quote.public()
 
 
@@ -458,7 +462,27 @@ async def admin_update_quote(quote_id: str, body: AdminUpdateIn, _: User = Depen
     update = {"status": body.status, "team_message": body.team_message.strip() or None, "updated_at": now_iso()}
     update["final_price_usd"] = body.final_price_usd if body.status == "Confirmed" else None
     doc = await db.quotes.find_one_and_update({"_id": doc["_id"]}, {"$set": update}, return_document=True)
+    if body.status == "Confirmed":
+        subject, html = emailer.flight_confirmed(Quote.from_mongo(doc).public(), AIRPORTS_BY_CODE)
+        status = await _try_send(doc["email"], subject, html, "Confirmation email sent", "Confirmation email failed")
+        doc = await db.quotes.find_one_and_update({"_id": doc["_id"]}, {"$set": {"email_status": status}}, return_document=True)
     return Quote.from_mongo(doc).public()
+
+
+async def _try_send(to: str, subject: str, html: str, ok: str, fail: str) -> str:
+    try:
+        await emailer.send_email(to=to, subject=subject, html=html)
+        return ok
+    except Exception as exc:
+        logger.error("member email failed: %s", exc)
+        return fail
+
+
+async def _send_request_received(quote_id: str) -> None:
+    doc = await db.quotes.find_one({"_id": ObjectId(quote_id)})
+    subject, html = emailer.request_received(Quote.from_mongo(doc).public(), AIRPORTS_BY_CODE)
+    status = await _try_send(doc["email"], subject, html, "Request email sent", "Request email failed")
+    await db.quotes.update_one({"_id": doc["_id"]}, {"$set": {"email_status": status}})
 
 
 # ---------------------------------------------------------------- Concierge

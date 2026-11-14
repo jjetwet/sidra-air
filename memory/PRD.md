@@ -25,3 +25,7 @@ Clean minimal jet illustrations (AI-generated, bundled) · AI concierge chat (Cl
 - Emergent Google Sign-In; trips & concierge chats tied to member; pre-sign-in device data claimed
 - Shareable itinerary image card (native share sheet; phone only)
 - Team dashboard for ADMIN_EMAILS staff: filter, confirm with final price + message, mark unavailable; members see results
+
+## Iteration 3 (2026-06)
+- Team access: ADMIN_EMAILS = joshua@flysidra.com (+ test account)
+- Branded emails via Emergent managed Resend (from name SIDRA, reply-to joshua@flysidra.com): quote request received, flight confirmed with final price & team message; email_status shown on team request screen
